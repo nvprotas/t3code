@@ -82,9 +82,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: vp lint apps/mobile/src/connection/ssh apps/mobile/src/features/connection apps/mobile/src/features/settings/EnvironmentRoutesSection.tsx packages/ssh/src
 
-      # expo-widgets 58.0.18 still imports io.github.jakex7.peek, but the
-      # peek-* artifacts it depends on ship the same API as io.github.expo.peek.
-      - name: Patch expo-widgets peek imports
+      # expo-widgets 58.0.18 does not build or start on Android as published:
+      # - it imports io.github.jakex7.peek, but the peek-* artifacts it depends
+      #   on ship the same API as io.github.expo.peek;
+      # - its CustomNotification class has no Constructor, which
+      #   expo-modules-core 58.0.19 rejects at launch ("constructor cannot be
+      #   null"). Instances come from native code, so JS construction throws.
+      - name: Patch expo-widgets Android sources
         if: ${{ !cancelled() }}
         run: |
           dir="$(cd apps/mobile && node -p "require('path').dirname(require.resolve('expo-widgets/package.json'))")/android"
@@ -92,6 +96,19 @@ jobs:
             sed 's/io\.github\.jakex7\.peek/io.github.expo.peek/g' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
           done
           ! grep -rn 'io.github.jakex7.peek' "$dir"
+          module="$(find "$dir" -name WidgetsModule.kt)"
+          python3 - "$module" <<'PY'
+          import sys
+          path = sys.argv[1]
+          source = open(path).read()
+          anchor = 'Class("CustomNotification", CustomNotification::class) {\n'
+          stub = '      Constructor { -> throw IllegalStateException("CustomNotification is created natively") }\n'
+          assert source.count(anchor) == 1, "CustomNotification class block not found"
+          if stub not in source:
+              source = source.replace(anchor, anchor + stub)
+          open(path, "w").write(source)
+          PY
+          grep -n -A1 'Class("CustomNotification"' "$module"
 
       - name: Setup Java
         if: ${{ !cancelled() }}
