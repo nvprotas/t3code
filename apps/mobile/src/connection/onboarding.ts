@@ -10,6 +10,20 @@ import { connectionAtomRuntime } from "./runtime";
 
 const onboardingScheduler = createAtomCommandScheduler();
 
+export const connectSsh = createRuntimeCommand(connectionAtomRuntime, {
+  label: "mobile:connection:connect-ssh",
+  scheduler: onboardingScheduler,
+  concurrency: {
+    mode: "singleFlight",
+    key: (input: ConnectionOnboarding.SshConnectionInput) =>
+      JSON.stringify([input.target, input.expectedEnvironmentId ?? null]),
+  },
+  execute: (input: ConnectionOnboarding.SshConnectionInput) =>
+    ConnectionOnboarding.ConnectionOnboarding.pipe(
+      Effect.flatMap((onboarding) => onboarding.registerSsh(input)),
+    ),
+});
+
 export const connectPairingUrl = createRuntimeCommand(connectionAtomRuntime, {
   label: "mobile:connection:connect-pairing-url",
   scheduler: onboardingScheduler,

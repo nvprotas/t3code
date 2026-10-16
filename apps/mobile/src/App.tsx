@@ -1,4 +1,5 @@
 import { PermissionUpdateNotice } from "./features/connection/PermissionUpdateNotice";
+import { SshPromptHost } from "./features/connection/SshPromptHost";
 import * as Linking from "expo-linking";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
@@ -97,6 +98,7 @@ function AppContent() {
                     <Navigation linking={appLinking} theme={navigationTheme} />
                   </IncomingShareProvider>
                   <Dialog.Host />
+                  <SshPromptHost />
                   <ThreadArrangementHost />
                 </NativeLayoutMetricsProvider>
               </GlobalVoiceInputControl>

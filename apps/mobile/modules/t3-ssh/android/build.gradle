@@ -1,0 +1,22 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.t3tools.ssh'
+version = '0.0.0'
+
+android {
+  namespace 'expo.modules.t3ssh'
+  defaultConfig {
+    versionCode 1
+    versionName '0.0.0'
+  }
+}
+
+dependencies {
+  implementation 'com.hierynomus:sshj:0.40.0'
+  implementation 'org.bouncycastle:bcprov-jdk18on:1.80'
+  implementation 'org.slf4j:slf4j-nop:2.0.17'
+  testImplementation 'junit:junit:4.13.2'
+}

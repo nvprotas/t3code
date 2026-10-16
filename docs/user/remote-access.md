@@ -182,6 +182,28 @@ running is left alone.
 For Antigravity's Google callback on a remote host, see
 [remote sign-in](./providers-antigravity.md#sign-in-from-a-remote-device).
 
+## SSH from Android
+
+The Android app can reach a T3 Code server that is already running on a machine
+you can SSH into. It does not install or start the server; start it there first,
+for example with `npx t3` or `t3 service install`.
+
+Open **Settings → Connections → Add environment → Connect over SSH** and enter
+the host, port, and username. Choose an SSH key: generate one on the phone and
+add the shown public key to `~/.ssh/authorized_keys` on the server, or import or
+paste an existing private key. Only key authentication is supported. Keys are
+encrypted on the device and are removed together with the connection.
+
+On the first connection, compare the displayed host key fingerprint with the
+server's, for example `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. A
+changed host key blocks the connection; remove it and add it again after you
+verify the new key. A passphrase for an encrypted key is asked once per app
+session and never saved.
+
+The SSH account must allow TCP forwarding. The app finds the server through
+`~/.t3/userdata/server-runtime.json` on that machine, so the server has to run
+as the same user with the default T3 home.
+
 ## Browser on a remote environment
 
 Browser tabs belong to the environment, so you and your agents see the same

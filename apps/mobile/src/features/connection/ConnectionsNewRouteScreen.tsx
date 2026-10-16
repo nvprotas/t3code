@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/expo";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import {
+  CommonActions,
   StackActions,
   useIsFocused,
   useNavigation,
@@ -31,6 +32,9 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { CloudEnvironmentRows } from "./CloudEnvironmentRows";
 import { splitEnvironmentSections } from "./environmentSections";
+import { Button } from "../../components/ui/Button";
+import { isSshSupported } from "../../connection/ssh/native";
+import { SshConnectionForm } from "./SshConnectionForm";
 
 type ConnectionsNewRouteParams = {
   readonly mode?: string;
@@ -41,6 +45,21 @@ type ConnectionsNewRouteParams = {
 };
 
 export function ConnectionsNewRouteScreen({
+  route,
+}: StaticScreenProps<ConnectionsNewRouteParams | undefined>) {
+  const routeName = useRoute().name;
+  if (route.params?.mode === "ssh") {
+    return (
+      <SshConnectionForm
+        expectedEnvironmentId={route.params.routeFor}
+        formSheet={routeName === "ConnectionsNew"}
+      />
+    );
+  }
+  return <PairingConnectionForm route={route} />;
+}
+
+function PairingConnectionForm({
   route,
 }: StaticScreenProps<ConnectionsNewRouteParams | undefined>) {
   const {
@@ -274,6 +293,13 @@ export function ConnectionsNewRouteScreen({
           </View>
 
           {hasCloudPublicConfig() ? <T3ConnectSection /> : null}
+          {isSshSupported() ? (
+            <Button
+              label="Connect over SSH"
+              fullWidth
+              onPress={() => navigation.dispatch(CommonActions.setParams({ mode: "ssh" }))}
+            />
+          ) : null}
         </View>
       </ScrollView>
     </SettingsScreen>
