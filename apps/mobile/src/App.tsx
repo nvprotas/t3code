@@ -1,3 +1,4 @@
+import { SshPromptHost } from "./features/connection/SshPromptHost";
 import { installPermissionUpdateNotice } from "./features/connection/permissionUpdateNotice";
 import { installComposerAttachmentUploads } from "./state/composer-attachment-uploads";
 import { installThreadOutboxDelivery } from "./state/threadOutboxDelivery";
@@ -248,6 +249,7 @@ function AppContent() {
                   onStateChange={handleNavigationStateChange}
                 />
                 <Dialog.Host />
+                <SshPromptHost />
                 <ThreadArrangementHost />
                 <ProjectChipIconRasterizer />
               </NativeLayoutMetricsProvider>

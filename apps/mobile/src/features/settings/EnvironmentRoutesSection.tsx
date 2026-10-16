@@ -31,6 +31,7 @@ import { cn } from "../../lib/cn";
 import { environmentSession } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { connectionTone } from "../connection/connectionTone";
+import { cleanupSshCredentials } from "../connection/sshCredentialsCleanup";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { SettingsDragHandle } from "./components/SettingsDragHandle";
 import { SettingsSection } from "./components/SettingsSection";
@@ -119,8 +120,16 @@ export function EnvironmentRoutesSection({
         {
           text: "Remove",
           style: "destructive",
-          onPress: () =>
-            void removeRoute({ environmentId, routeId: connectionRouteId(route.target) }),
+          onPress: () => {
+            const profile = Option.getOrNull(route.profile);
+            void removeRoute({ environmentId, routeId: connectionRouteId(route.target) }).then(
+              (result) => {
+                if (AsyncResult.isSuccess(result) && profile?._tag === "SshConnectionProfile") {
+                  return cleanupSshCredentials(profile.target);
+                }
+              },
+            );
+          },
         },
       ],
     );
