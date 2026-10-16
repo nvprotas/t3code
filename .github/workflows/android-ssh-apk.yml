@@ -146,4 +146,4 @@ jobs:
       - name: SSH module unit tests
         if: ${{ !cancelled() }}
         working-directory: apps/mobile/android
-        run: ./gradlew :t3-ssh:testReleaseUnitTest --max-workers=4
+        run: ./gradlew :t3-ssh:testDebugUnitTest --max-workers=4
