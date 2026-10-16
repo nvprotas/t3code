@@ -170,6 +170,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # Symbolicates Hermes JS stack traces from this build.
+      - name: Upload JS source map
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh-sourcemap
+          path: apps/mobile/android/app/build/generated/sourcemaps/react/release/index.android.bundle.map
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: SSH module unit tests
         if: ${{ !cancelled() }}
         working-directory: apps/mobile/android
