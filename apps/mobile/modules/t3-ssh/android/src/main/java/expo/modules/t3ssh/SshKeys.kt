@@ -1,5 +1,6 @@
 package expo.modules.t3ssh
 
+import android.util.Log
 import expo.modules.kotlin.exception.CodedException
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.Buffer
@@ -152,7 +153,9 @@ internal object SshKeys {
         requireNotNull(it.private)
         requireNotNull(it.public)
       }
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+      // Never log the key itself; the exception names the failing algorithm or format.
+      Log.w("T3Ssh", "Private key load failed: ${error.javaClass.name}: ${error.message}")
       if (passwordRequested) throw sshError("SSH_PASSPHRASE_REQUIRED", "Private key passphrase is required or incorrect")
       throw sshError("SSH_KEY_INVALID", "Private key format is invalid or unsupported")
     }
