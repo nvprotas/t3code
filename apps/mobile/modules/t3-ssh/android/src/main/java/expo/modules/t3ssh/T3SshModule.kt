@@ -7,8 +7,6 @@ import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import expo.modules.kotlin.records.Field
-import expo.modules.kotlin.records.Record
 import net.schmizz.keepalive.KeepAliveProvider
 import net.schmizz.keepalive.KeepAliveRunner
 import net.schmizz.sshj.DefaultConfig
@@ -34,14 +32,28 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import javax.net.SocketFactory
 
-class ConnectOptions : Record {
-  @Field var attemptId: String = ""
-  @Field var hostname: String = ""
-  @Field var port: Int = 22
-  @Field var username: String = ""
-  @Field var keyRef: String = ""
-  @Field var passphrase: String? = null
-  @Field var hostKey: String? = null
+// A plain class parsed from the JS object: Expo Records are built reflectively,
+// and R8 strips their no-arg constructor in release builds.
+class ConnectOptions(
+  val attemptId: String,
+  val hostname: String,
+  val port: Int,
+  val username: String,
+  val keyRef: String,
+  var passphrase: String?,
+  val hostKey: String?,
+) {
+  companion object {
+    fun from(raw: Map<String, Any?>) = ConnectOptions(
+      attemptId = raw["attemptId"] as String,
+      hostname = raw["hostname"] as String,
+      port = (raw["port"] as Number).toInt(),
+      username = raw["username"] as String,
+      keyRef = raw["keyRef"] as String,
+      passphrase = raw["passphrase"] as String?,
+      hostKey = raw["hostKey"] as String?,
+    )
+  }
 }
 
 class T3SshModule : Module() {
@@ -95,23 +107,26 @@ class T3SshModule : Module() {
     AsyncFunction("deleteKey") { keyRef: String, promise: Promise ->
       async(promise, "SSH_KEY_INVALID", "Unable to delete private key") { keyStore.delete(keyRef); null }
     }
-    AsyncFunction("connect") { options: ConnectOptions, promise: Promise ->
+    AsyncFunction("connect") { raw: Map<String, Any?>, promise: Promise ->
       // Register before dispatch so a following cancel cannot miss queued work.
       var registered: Connection? = null
+      var options: ConnectOptions? = null
       try {
-        validate(options)
+        val parsed = ConnectOptions.from(raw)
+        options = parsed
+        validate(parsed)
         val connection = synchronized(lock) {
           check(!destroyed)
-          require(!attempts.containsKey(options.attemptId))
-          Connection(options.attemptId, promise, options.passphrase?.toCharArray()).also {
+          require(!attempts.containsKey(parsed.attemptId))
+          Connection(parsed.attemptId, promise, parsed.passphrase?.toCharArray()).also {
             attempts[it.attemptId] = it
           }
         }
         registered = connection
-        options.passphrase = null
-        workers.execute { connect(connection, options) }
+        parsed.passphrase = null
+        workers.execute { connect(connection, parsed) }
       } catch (_: Exception) {
-        options.passphrase = null
+        options?.passphrase = null
         val error = sshError("SSH_OPEN_FAILED", "Unable to start SSH connection")
         registered?.let { stop(it, error) } ?: promise.reject(error)
       }

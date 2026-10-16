@@ -143,6 +143,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # Decodes R8-obfuscated crash traces from this build.
+      - name: Upload R8 mapping
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh-mapping
+          path: apps/mobile/android/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: SSH module unit tests
         if: ${{ !cancelled() }}
         working-directory: apps/mobile/android
