@@ -125,13 +125,28 @@ jobs:
         with:
           cache-read-only: false
 
+      # The Gradle home cache only skips downloads; most of the build is C++
+      # compiled by CMake for native modules, so ccache carries it across runs.
+      - name: Setup ccache
+        if: ${{ !cancelled() }}
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: android-ssh-apk
+          max-size: 2G
+
       - name: Build release APK
         if: ${{ !cancelled() }}
         working-directory: apps/mobile
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_NOHASHDIR: "true"
         run: |
           pnpm exec expo prebuild --clean --platform android --no-install
           cd android
-          ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=4
+          ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=4 --build-cache
+          ccache --show-stats
           mkdir -p ../build-output
           cp app/build/outputs/apk/release/app-release.apk ../build-output/t3code-ssh.apk
 
