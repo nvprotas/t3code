@@ -49,6 +49,7 @@ jobs:
               - --filter=@t3tools/mobile...
               - --filter=@t3tools/ssh...
               - --filter=@t3tools/monorepo
+              - --filter=@t3tools/oxlint-plugin-t3code
 
       - name: Expose pnpm
         run: |
@@ -80,6 +81,17 @@ jobs:
       - name: Lint
         if: ${{ !cancelled() }}
         run: vp lint apps/mobile/src/connection/ssh apps/mobile/src/features/connection apps/mobile/src/features/settings/EnvironmentRoutesSection.tsx packages/ssh/src
+
+      # expo-widgets 58.0.18 still imports io.github.jakex7.peek, but the
+      # peek-* artifacts it depends on ship the same API as io.github.expo.peek.
+      - name: Patch expo-widgets peek imports
+        if: ${{ !cancelled() }}
+        run: |
+          dir="$(cd apps/mobile && node -p "require('path').dirname(require.resolve('expo-widgets/package.json'))")/android"
+          grep -rl 'io.github.jakex7.peek' "$dir" | while read -r file; do
+            sed 's/io\.github\.jakex7\.peek/io.github.expo.peek/g' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+          done
+          ! grep -rn 'io.github.jakex7.peek' "$dir"
 
       - name: Setup Java
         if: ${{ !cancelled() }}
