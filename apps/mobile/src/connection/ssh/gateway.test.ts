@@ -13,7 +13,7 @@ import { makeMobileSshGateway, type MobileSshGatewayDeps, type MobileSshTranspor
 import type { SshClosedEvent, SshHostKeyEvent } from "./native";
 
 const target = { alias: "server", hostname: "example.test", username: "alice", port: 22 };
-const environmentId = EnvironmentId.makeUnsafe("remote-environment");
+const environmentId = EnvironmentId.make("remote-environment");
 const prepareInput = { connectionId: "ssh-connection", expectedEnvironmentId: environmentId, target };
 const running = {
   runtime: { pid: 123, port: 3773, origin: "http://0.0.0.0:3773" },
@@ -219,7 +219,7 @@ describe("mobile SSH gateway", () => {
 
   it("checks environment identity before validating or issuing credentials", async () => {
     const f = fixture();
-    const error = await Effect.runPromise(Effect.flip(f.gateway.provision(target, EnvironmentId.makeUnsafe("other-environment"))));
+    const error = await Effect.runPromise(Effect.flip(f.gateway.provision(target, EnvironmentId.make("other-environment"))));
     expect(error).toMatchObject({ _tag: "ConnectionBlockedError", reason: "configuration" });
     expect(f.deps.fetchRemoteSessionState).not.toHaveBeenCalled();
     expect(f.deps.bootstrapRemoteBearerSession).not.toHaveBeenCalled();
