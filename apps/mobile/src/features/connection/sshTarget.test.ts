@@ -21,7 +21,9 @@ describe("parseSshTarget", () => {
   });
 
   it("uses the username and port from a pasted destination", () => {
-    expect(parseSshTarget({ host: "alice@server.example:2222", username: "bob", port: "22" })).toEqual({
+    expect(
+      parseSshTarget({ host: "alice@server.example:2222", username: "bob", port: "22" }),
+    ).toEqual({
       alias: "alice@server.example:2222",
       hostname: "server.example",
       username: "alice",
@@ -69,17 +71,23 @@ describe("SSH key references", () => {
     const target = parseSshTarget({ host: "alice@server", username: "", port: "" });
     const entry: ConnectionCatalogEntry = {
       enabled: false,
-      target: new BearerConnectionTarget({ environmentId, label: "Server", connectionId: "direct" }),
+      target: new BearerConnectionTarget({
+        environmentId,
+        label: "Server",
+        connectionId: "direct",
+      }),
       profile: Option.none(),
       alternateRoutes: [
         {
           target: new SshConnectionTarget({ environmentId, label: "Server", connectionId: "ssh" }),
-          profile: Option.some(new SshConnectionProfile({
-            environmentId,
-            label: "Server",
-            connectionId: "ssh",
-            target,
-          })),
+          profile: Option.some(
+            new SshConnectionProfile({
+              environmentId,
+              label: "Server",
+              connectionId: "ssh",
+              target,
+            }),
+          ),
         },
       ],
     };
@@ -88,7 +96,9 @@ describe("SSH key references", () => {
   });
 
   it("preserves a key referenced by another saved profile", () => {
-    expect(isSshKeyReferenced("shared", [null, { keyRef: "other" }, { keyRef: "shared" }])).toBe(true);
+    expect(isSshKeyReferenced("shared", [null, { keyRef: "other" }, { keyRef: "shared" }])).toBe(
+      true,
+    );
     expect(isSshKeyReferenced("removed", [null, { keyRef: "other" }])).toBe(false);
     expect(isSshKeyReferenced("removed", [])).toBe(false);
   });

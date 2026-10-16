@@ -5,11 +5,7 @@ import { AppText } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import { Sheet } from "../../components/ui/Sheet";
-import {
-  answerSshPrompt,
-  useCurrentSshPrompt,
-  type SshPrompt,
-} from "../../connection/ssh/prompts";
+import { answerSshPrompt, useCurrentSshPrompt, type SshPrompt } from "../../connection/ssh/prompts";
 import { ConnectionFormField } from "./ConnectionFormField";
 
 export function SshPromptHost() {

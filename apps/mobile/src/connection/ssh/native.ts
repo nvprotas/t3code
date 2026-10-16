@@ -88,7 +88,9 @@ export interface T3SshNativeModule {
   /** Imports OpenSSH, PEM or PuTTY private key text (at most 64 KiB). Rejects SSH_KEY_INVALID. */
   importKey(privateKey: string): Promise<SshKeyInfo>;
   deleteKey(keyRef: string): Promise<void>;
-  connect(options: SshConnectOptions): Promise<{ readonly sessionId: string; readonly hostKey: string }>;
+  connect(
+    options: SshConnectOptions,
+  ): Promise<{ readonly sessionId: string; readonly hostKey: string }>;
   confirmHostKey(attemptId: string, accept: boolean): Promise<void>;
   /** Cancels a pending `connect`; it rejects SSH_CANCELLED. */
   cancel(attemptId: string): Promise<void>;
@@ -107,10 +109,7 @@ export interface T3SshNativeModule {
   ): Promise<{ readonly localPort: number }>;
   isOpen(sessionId: string): boolean;
   close(sessionId: string): Promise<void>;
-  addListener<E extends keyof SshEvents>(
-    event: E,
-    listener: SshEvents[E],
-  ): { remove(): void };
+  addListener<E extends keyof SshEvents>(event: E, listener: SshEvents[E]): { remove(): void };
 }
 
 export const sshNative: T3SshNativeModule | null =
