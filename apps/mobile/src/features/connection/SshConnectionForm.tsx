@@ -153,7 +153,11 @@ export function SshConnectionForm({
         throw new Error("This SSH destination is already saved. Reconnect it from Environments.");
       }
       owned.targets.set(sshTargetKey(target), target);
-      await writeSshCredentials(target, { keyRef: owned.key.keyRef, hostKey: null, bearerToken: null });
+      await writeSshCredentials(target, {
+        keyRef: owned.key.keyRef,
+        hostKey: null,
+        bearerToken: null,
+      });
       if (!owned.mounted) return;
       const result = await connectSsh({
         target,
@@ -167,7 +171,9 @@ export function SshConnectionForm({
       owned.targets.delete(sshTargetKey(target));
       for (const attempted of owned.targets.values()) {
         try {
-          if (currentSshTargets().some((saved) => sshTargetKey(saved) === sshTargetKey(attempted))) {
+          if (
+            currentSshTargets().some((saved) => sshTargetKey(saved) === sshTargetKey(attempted))
+          ) {
             continue;
           }
           const credentials = await readSshCredentials(attempted);
@@ -272,14 +278,16 @@ export function SshConnectionForm({
                       label="Import key"
                       disabled={busy || !privateKey.trim()}
                       fullWidth
-                      onPress={() => void chooseKey(async () => {
-                        const text = privateKey;
-                        setPrivateKey("");
-                        if (new TextEncoder().encode(text).byteLength > MAX_KEY_BYTES) {
-                          throw new Error("Paste a private key no larger than 64 KiB.");
-                        }
-                        return sshNative!.importKey(text);
-                      })}
+                      onPress={() =>
+                        void chooseKey(async () => {
+                          const text = privateKey;
+                          setPrivateKey("");
+                          if (new TextEncoder().encode(text).byteLength > MAX_KEY_BYTES) {
+                            throw new Error("Paste a private key no larger than 64 KiB.");
+                          }
+                          return sshNative!.importKey(text);
+                        })
+                      }
                     />
                   </>
                 ) : null}
@@ -301,7 +309,9 @@ export function SshConnectionForm({
                       onPress={() => {
                         void Clipboard.setStringAsync(key.publicKey!)
                           .then(() => setCopied(true))
-                          .catch(() => setError("Could not copy the public key. Select it to copy manually."));
+                          .catch(() =>
+                            setError("Could not copy the public key. Select it to copy manually."),
+                          );
                       }}
                     />
                     <AppText>Add this public key to ~/.ssh/authorized_keys on the server.</AppText>

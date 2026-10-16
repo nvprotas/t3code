@@ -1,7 +1,4 @@
-import {
-  connectionRoutes,
-  type ConnectionCatalogEntry,
-} from "@t3tools/client-runtime/connection";
+import { connectionRoutes, type ConnectionCatalogEntry } from "@t3tools/client-runtime/connection";
 import type { DesktopSshEnvironmentTarget } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
@@ -46,8 +43,7 @@ export function savedSshTargets(entries: Iterable<ConnectionCatalogEntry>) {
   return Array.from(entries).flatMap((entry) =>
     connectionRoutes(entry).flatMap((route) => {
       const profile = Option.getOrNull(route.profile);
-      return route.target._tag === "SshConnectionTarget" &&
-        profile?._tag === "SshConnectionProfile"
+      return route.target._tag === "SshConnectionTarget" && profile?._tag === "SshConnectionProfile"
         ? [profile.target]
         : [];
     }),

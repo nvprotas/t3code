@@ -252,11 +252,12 @@ export function makeMobileSshGateway(
           });
         }
         const { runtime, alive } = yield* decodeDiscovery(extractJsonObject(discovery.stdout)).pipe(
-          Effect.mapError(() =>
-            new ConnectionTransientError({
-              reason: "remote-unavailable",
-              detail: "The remote T3 Code runtime state is invalid.",
-            }),
+          Effect.mapError(
+            () =>
+              new ConnectionTransientError({
+                reason: "remote-unavailable",
+                detail: "The remote T3 Code runtime state is invalid.",
+              }),
           ),
         );
         if (runtime === null || !alive) {
@@ -329,10 +330,13 @@ export function makeMobileSshGateway(
         const tunnel = cachedTunnel ?? (yield* open(target, credentials));
         const httpBaseUrl = `http://127.0.0.1:${tunnel.localPort}`;
         const wsBaseUrl = `ws://127.0.0.1:${tunnel.localPort}`;
-        const descriptor = yield* deps.fetchRemoteEnvironmentDescriptor({ httpBaseUrl }).pipe(
-          Effect.mapError(remoteError),
-        );
-        if (expectedEnvironmentId !== undefined && descriptor.environmentId !== expectedEnvironmentId) {
+        const descriptor = yield* deps
+          .fetchRemoteEnvironmentDescriptor({ httpBaseUrl })
+          .pipe(Effect.mapError(remoteError));
+        if (
+          expectedEnvironmentId !== undefined &&
+          descriptor.environmentId !== expectedEnvironmentId
+        ) {
           return yield* environmentMismatchError({
             expected: expectedEnvironmentId,
             actual: descriptor.environmentId,
@@ -370,17 +374,18 @@ export function makeMobileSshGateway(
             });
           }
           const { credential } = yield* decodePairing(extractJsonObject(result.stdout)).pipe(
-            Effect.mapError(() =>
-              new ConnectionTransientError({
-                reason: "remote-unavailable",
-                detail: "The remote T3 Code pairing response is invalid.",
-              }),
+            Effect.mapError(
+              () =>
+                new ConnectionTransientError({
+                  reason: "remote-unavailable",
+                  detail: "The remote T3 Code pairing response is invalid.",
+                }),
             ),
           );
           rememberSecret(credential);
-          const access = yield* deps.bootstrapRemoteBearerSession({ httpBaseUrl, credential }).pipe(
-            Effect.mapError(remoteError),
-          );
+          const access = yield* deps
+            .bootstrapRemoteBearerSession({ httpBaseUrl, credential })
+            .pipe(Effect.mapError(remoteError));
           bearerToken = access.access_token;
           rememberSecret(bearerToken);
           yield* call(() => deps.updateSshCredentials(target, { bearerToken }));
