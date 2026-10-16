@@ -1,0 +1,120 @@
+name: Android SSH APK
+
+# Fork-only: builds the preview-variant APK with the SSH connection module.
+# Drop before proposing anything upstream.
+on:
+  push:
+    branches:
+      - android-ssh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ssh-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Check and build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      APP_VARIANT: preview
+      EXPO_NO_GIT_STATUS: "1"
+      NODE_OPTIONS: --max-old-space-size=6144
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+    steps:
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@t3tools/mobile...
+              - --filter=@t3tools/ssh...
+
+      - name: Expose pnpm
+        run: |
+          pnpm_version="$(node --print "require('./package.json').packageManager.split('@').pop()")"
+          vp_pnpm_bin="$HOME/.vite-plus/package_manager/pnpm/$pnpm_version/pnpm/bin"
+          echo "$vp_pnpm_bin" >> "$GITHUB_PATH"
+          "$vp_pnpm_bin/pnpm" --version
+
+      - name: Typecheck
+        run: |
+          pnpm --filter @t3tools/ssh run typecheck
+          pnpm --filter @t3tools/mobile run typecheck
+
+      - name: Test
+        run: |
+          (cd packages/ssh && vp test run --config ../../vite.config.ts --dir .)
+          (cd apps/mobile && vp test run --config ../../vite.config.ts src/connection/ssh src/features/connection)
+
+      - name: Lint
+        run: vp lint apps/mobile/src/connection/ssh apps/mobile/src/features/connection packages/ssh/src
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Build release APK
+        working-directory: apps/mobile
+        run: |
+          pnpm exec expo prebuild --clean --platform android --no-install
+          cd android
+          ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=4
+          mkdir -p ../build-output
+          cp app/build/outputs/apk/release/app-release.apk ../build-output/t3code-ssh.apk
+
+      # Without these secrets the APK keeps Expo's per-build debug signature,
+      # which cannot update an earlier install in place.
+      - name: Sign APK with the release key
+        if: env.ANDROID_KEYSTORE_B64 != ''
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/release.jks"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$keystore"
+          build_tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          apk=apps/mobile/build-output/t3code-ssh.apk
+          "$build_tools/apksigner" sign \
+            --ks "$keystore" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --v4-signing-enabled false \
+            "$apk"
+          "$build_tools/apksigner" verify --print-certs "$apk" | grep -E 'DN|SHA-256'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh
+          path: apps/mobile/build-output/t3code-ssh.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: SSH module unit tests
+        working-directory: apps/mobile/android
+        run: ./gradlew :t3-ssh:testReleaseUnitTest --max-workers=4
