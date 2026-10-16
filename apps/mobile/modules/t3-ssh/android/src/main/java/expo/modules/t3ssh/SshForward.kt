@@ -3,6 +3,8 @@ package expo.modules.t3ssh
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.DirectConnection
 import java.io.Closeable
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -65,14 +67,14 @@ internal class SshForward(
       }
       workers.execute {
         try {
-          socket.getInputStream().copyTo(connection.outputStream)
+          pump(socket.getInputStream(), connection.outputStream)
           connection.outputStream.close()
         } catch (_: Exception) {
           runCatching { socket.close() }
           runCatching { connection.close() }
         }
       }
-      connection.inputStream.copyTo(socket.getOutputStream())
+      pump(connection.inputStream, socket.getOutputStream())
     } catch (_: Exception) {
       // A refused destination closes this TCP connection, not the SSH session.
     } finally {
@@ -82,6 +84,20 @@ internal class SshForward(
         sockets.remove(socket)
         channel?.let { channels.remove(it) }
       }
+    }
+  }
+
+  /**
+   * Copies until EOF, flushing every read. SSHJ's channel stream holds data
+   * until a full packet, so a short request would never reach the server.
+   */
+  private fun pump(input: InputStream, output: OutputStream) {
+    val buffer = ByteArray(32 * 1024)
+    while (true) {
+      val read = input.read(buffer)
+      if (read < 0) return
+      output.write(buffer, 0, read)
+      output.flush()
     }
   }
 
