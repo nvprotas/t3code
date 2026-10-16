@@ -48,6 +48,7 @@ jobs:
             args:
               - --filter=@t3tools/mobile...
               - --filter=@t3tools/ssh...
+              - --filter=@t3tools/monorepo
 
       - name: Expose pnpm
         run: |
