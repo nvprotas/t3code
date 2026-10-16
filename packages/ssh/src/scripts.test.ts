@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - The scripts run through a real sh in a temporary HOME.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
