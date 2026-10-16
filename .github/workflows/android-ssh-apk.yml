@@ -117,9 +117,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # setup-gradle writes its cache only on the default branch unless told
+      # otherwise, so every android-ssh build started from an empty Gradle home.
       - name: Setup Gradle cache
         if: ${{ !cancelled() }}
         uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
 
       - name: Build release APK
         if: ${{ !cancelled() }}
