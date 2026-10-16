@@ -15,8 +15,13 @@ android {
 }
 
 dependencies {
-  implementation 'com.hierynomus:sshj:0.40.0'
-  implementation 'org.bouncycastle:bcprov-jdk18on:1.80'
+  // The app already ships the jdk15to18 BouncyCastle build; a second
+  // (jdk18on) copy fails the release build with duplicate classes.
+  implementation('com.hierynomus:sshj:0.40.0') {
+    exclude group: 'org.bouncycastle'
+  }
+  implementation 'org.bouncycastle:bcprov-jdk15to18:1.81'
+  implementation 'org.bouncycastle:bcpkix-jdk15to18:1.81'
   implementation 'org.slf4j:slf4j-nop:2.0.17'
   testImplementation 'junit:junit:4.13.2'
 }

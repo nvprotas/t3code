@@ -1,5 +1,4 @@
 import { requireOptionalNativeModule } from "expo";
-import type { EventSubscription } from "expo-modules-core";
 import { Platform } from "react-native";
 
 /**
@@ -108,7 +107,10 @@ export interface T3SshNativeModule {
   ): Promise<{ readonly localPort: number }>;
   isOpen(sessionId: string): boolean;
   close(sessionId: string): Promise<void>;
-  addListener<E extends keyof SshEvents>(event: E, listener: SshEvents[E]): EventSubscription;
+  addListener<E extends keyof SshEvents>(
+    event: E,
+    listener: SshEvents[E],
+  ): { remove(): void };
 }
 
 export const sshNative: T3SshNativeModule | null =
