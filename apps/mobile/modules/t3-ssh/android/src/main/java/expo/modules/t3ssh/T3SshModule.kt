@@ -1,6 +1,7 @@
 package expo.modules.t3ssh
 
 import android.content.Context
+import android.util.Log
 import android.net.ConnectivityManager
 import android.net.Network
 import expo.modules.kotlin.Promise
@@ -297,6 +298,7 @@ class T3SshModule : Module() {
         connection.promise.resolve(mapOf("sessionId" to connection.sessionId, "hostKey" to requireNotNull(connection.verifiedKey)))
       }
     } catch (error: Exception) {
+      Log.w("T3Ssh", "SSH connect failed: ${error.javaClass.name}: ${error.message}")
       val failure = when (error) {
         is CodedException -> error
         is SocketTimeoutException, is TimeoutException -> sshError("SSH_TIMEOUT", "SSH connection timed out")
