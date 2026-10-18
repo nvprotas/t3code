@@ -92,6 +92,8 @@ export interface Preferences {
   readonly pullRequestHideTestFiles?: boolean;
   readonly pullRequestMergeMethod?: PullRequestMergeMethod;
   readonly liveActivitiesEnabled?: boolean;
+  /** Posts thread notifications from the live connection in builds without T3 Connect. */
+  readonly localThreadNotificationsEnabled?: boolean;
   readonly themeId?: MobileThemeId;
   readonly lightThemeId?: MobileThemeId;
   readonly darkThemeId?: MobileThemeId;
@@ -174,6 +176,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     pullRequestHideTestFiles?: boolean;
     pullRequestMergeMethod?: PullRequestMergeMethod;
     liveActivitiesEnabled?: boolean;
+    localThreadNotificationsEnabled?: boolean;
     themeId?: MobileThemeId;
     lightThemeId?: MobileThemeId;
     darkThemeId?: MobileThemeId;
@@ -233,6 +236,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
     preferences.liveActivitiesEnabled = parsed.liveActivitiesEnabled;
+  }
+  if (typeof parsed.localThreadNotificationsEnabled === "boolean") {
+    preferences.localThreadNotificationsEnabled = parsed.localThreadNotificationsEnabled;
   }
   if (
     typeof parsed.themeId === "string" &&
