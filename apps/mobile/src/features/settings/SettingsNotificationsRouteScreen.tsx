@@ -12,7 +12,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { AppState, Linking, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text } from "../../components/ui/AppText";
 import {
   isAtomCommandInterrupted,
   reportAtomCommandResult,
@@ -61,21 +60,86 @@ function useDeviceRegistered(): boolean {
 
 export function SettingsNotificationsRouteScreen() {
   if (!hasCloudPublicConfig()) {
-    return (
-      <SettingsScreen title="Notifications">
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerClassName="px-5 pt-4"
-        >
-          <Text className="text-base text-foreground-muted">
-            Notifications require T3 Connect in this app build.
-          </Text>
-        </ScrollView>
-      </SettingsScreen>
-    );
+    return <LocalSettingsNotificationsRouteScreen />;
   }
 
   return <ConfiguredSettingsNotificationsRouteScreen />;
+}
+
+// Builds without T3 Connect cannot receive relay pushes, so the app posts
+// notifications itself from the live connection (LocalThreadNotificationsWorker).
+function LocalSettingsNotificationsRouteScreen() {
+  const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const [requesting, setRequesting] = useState(false);
+  const enabled =
+    AsyncResult.isSuccess(preferencesResult) &&
+    preferencesResult.value.localThreadNotificationsEnabled === true;
+
+  const handleChange = useCallback(
+    async (next: boolean) => {
+      if (!next) {
+        savePreferences({ localThreadNotificationsEnabled: false });
+        return;
+      }
+      setRequesting(true);
+      const result = await settleAsyncResult(() =>
+        runtime.runPromiseExit(requestAgentNotificationPermission),
+      );
+      setRequesting(false);
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          Dialog.alert(
+            "Notifications unavailable",
+            error instanceof Error ? error.message : "Could not request notification permission.",
+          );
+        }
+        return;
+      }
+      if (result.value.type === "granted") {
+        savePreferences({ localThreadNotificationsEnabled: true });
+        return;
+      }
+      if (result.value.type === "unsupported") {
+        Dialog.alert(
+          "Notifications unavailable",
+          "Notifications are unavailable on this platform.",
+        );
+        return;
+      }
+      Dialog.alert(
+        "Notifications disabled",
+        "Notifications were denied for this app. Open Settings to enable them.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
+      );
+    },
+    [savePreferences],
+  );
+
+  return (
+    <SettingsScreen title="Notifications">
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        className="flex-1"
+        contentContainerClassName="gap-6 px-5 pt-4"
+      >
+        <SettingsSection title="Agent activity">
+          <SettingsSwitchRow
+            icon="bell.badge"
+            label="Thread Notifications"
+            subtitle="When a thread finishes, fails, or needs input. Works while the app stays connected; this build has no T3 Connect push."
+            disabled={requesting || !AsyncResult.isSuccess(preferencesResult)}
+            value={enabled}
+            onValueChange={(next) => void handleChange(next)}
+          />
+        </SettingsSection>
+      </ScrollView>
+    </SettingsScreen>
+  );
 }
 
 function ConfiguredSettingsNotificationsRouteScreen() {

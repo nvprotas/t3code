@@ -73,14 +73,14 @@ jobs:
         working-directory: packages/ssh
         run: vp test run --config ../../vite.config.ts --dir .
 
-      - name: Test mobile SSH
+      - name: Test mobile SSH and local notifications
         if: ${{ !cancelled() }}
         working-directory: apps/mobile
-        run: vp test run --config ../../vite.config.ts src/connection/ssh src/features/connection
+        run: vp test run --config ../../vite.config.ts src/connection/ssh src/features/connection src/features/agent-awareness/localThreadNotifications.test.ts
 
       - name: Lint
         if: ${{ !cancelled() }}
-        run: vp lint apps/mobile/src/connection/ssh apps/mobile/src/features/connection apps/mobile/src/features/settings/EnvironmentRoutesSection.tsx packages/ssh/src
+        run: vp lint apps/mobile/src/connection/ssh apps/mobile/src/features/connection apps/mobile/src/features/settings/EnvironmentRoutesSection.tsx apps/mobile/src/features/settings/SettingsNotificationsRouteScreen.tsx apps/mobile/src/features/agent-awareness packages/ssh/src
 
       # expo-widgets 58.0.18 does not build or start on Android as published:
       # - it imports io.github.jakex7.peek, but the peek-* artifacts it depends

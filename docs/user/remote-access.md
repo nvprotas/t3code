@@ -204,6 +204,12 @@ The SSH account must allow TCP forwarding. The app finds the server through
 `~/.t3/userdata/server-runtime.json` on that machine, so the server has to run
 as the same user with the default T3 home.
 
+App builds without T3 Connect cannot receive push notifications. Turn on
+**Settings → Notifications → Thread Notifications** to get alerts when a thread
+finishes, fails, or needs input. They only arrive while the app keeps its
+connection; once Android suspends the app in the background, they stop until
+you open it again.
+
 ## Browser on a remote environment
 
 Browser tabs belong to the environment, so you and your agents see the same

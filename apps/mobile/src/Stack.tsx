@@ -46,6 +46,7 @@ import {
   type RenderFailureProps,
 } from "./components/RenderErrorBoundary";
 import { ArchivedThreadsRouteScreen } from "./features/archive/ArchivedThreadsRouteScreen";
+import { LocalThreadNotificationsWorker } from "./features/agent-awareness/LocalThreadNotificationsWorker";
 import { useAgentNotificationNavigation } from "./features/agent-awareness/notificationNavigation";
 import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
 import { useConnectOnboardingNavigation } from "./features/cloud/connectOnboardingNavigation";
@@ -654,6 +655,7 @@ function RootStackLayout(props: {
   return (
     <HardwareKeyboardCommandProvider pathname={pathname}>
       <ThreadOutboxDrainWorker />
+      <LocalThreadNotificationsWorker />
       <ShowcaseCaptureCoordinator pathname={pathname} />
       <ExistingThreadSettingsRouteProvider>
         <AndroidWorkspaceTabsProvider>
