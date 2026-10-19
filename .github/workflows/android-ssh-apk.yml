@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: android-ssh-apk-${{ github.ref }}
@@ -178,6 +178,22 @@ jobs:
           path: apps/mobile/build-output/t3code-ssh.apk
           if-no-files-found: error
           retention-days: 14
+
+      # A fresh release per successful build: watchers (Watch > Custom > Releases)
+      # get a notification with a direct APK link, which artifacts cannot give.
+      # The tag deliberately does not start with "v": upstream release tooling
+      # treats every v* tag as a desktop release.
+      - name: Publish release
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "android-ssh-v0.1.${{ github.run_number }}" \
+            apps/mobile/build-output/t3code-ssh.apk \
+            --prerelease \
+            --target "${{ github.sha }}" \
+            --title "Android SSH v0.1.${{ github.run_number }}" \
+            --notes "Commit ${{ github.sha }}"
 
       # Decodes R8-obfuscated crash traces from this build.
       - name: Upload R8 mapping
