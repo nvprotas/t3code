@@ -108,6 +108,8 @@ export interface T3SshNativeModule {
     remotePort: number,
   ): Promise<{ readonly localPort: number }>;
   isOpen(sessionId: string): boolean;
+  /** Keeps the Headless JS task alive until its SSH connection closes. */
+  waitForBackgroundSession(leaseId: string): Promise<void>;
   close(sessionId: string): Promise<void>;
   addListener<E extends keyof SshEvents>(event: E, listener: SshEvents[E]): { remove(): void };
 }
