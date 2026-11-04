@@ -21,6 +21,7 @@ android {
 }
 
 dependencies {
+  implementation 'com.facebook.react:react-android'
   // The app already ships the jdk15to18 BouncyCastle build; a second
   // (jdk18on) copy fails the release build with duplicate classes.
   implementation('com.hierynomus:sshj:0.40.0') {

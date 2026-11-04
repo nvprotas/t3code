@@ -98,8 +98,7 @@ jobs:
 
       - name: Test mobile SSH and local notifications
         if: ${{ !cancelled() }}
-        working-directory: apps/mobile
-        run: vp test run --config ../../vite.config.ts src/connection/ssh src/features/connection src/features/agent-awareness/localThreadNotifications.test.ts
+        run: vp test run apps/mobile/src/connection/ssh apps/mobile/src/features/connection apps/mobile/src/features/agent-awareness/localThreadNotifications.test.ts
 
       - name: Lint
         if: ${{ !cancelled() }}
@@ -138,7 +137,9 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: |
+            21
+            17
 
       # setup-gradle writes its cache only on the default branch unless told
       # otherwise, so every android-ssh build started from an empty Gradle home.
@@ -165,7 +166,7 @@ jobs:
       - name: SSH and agent notification unit tests
         if: ${{ !cancelled() }}
         working-directory: apps/mobile/android
-        run: ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest --max-workers=4
+        run: ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64 --max-workers=4
 
       - name: Upload SSH test results
         if: ${{ !cancelled() }}
