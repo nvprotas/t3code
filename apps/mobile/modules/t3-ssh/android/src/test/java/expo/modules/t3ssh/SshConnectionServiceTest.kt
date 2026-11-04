@@ -24,10 +24,10 @@ import org.robolectric.shadows.ShadowPowerManager
 class SshConnectionServiceTest {
   @Test
   fun `active SSH leases retain foreground notification power and heartbeat until the last closes`() {
-    val context = RuntimeEnvironment.getApplication<android.app.Application>()
+    val context = RuntimeEnvironment.getApplication()
     val tasks = mutableListOf<String>()
-    val first = SshConnectionService.retain(context, tasks::add) { fail("Unexpected disconnect") }
-    val second = SshConnectionService.retain(context, tasks::add) { fail("Unexpected disconnect") }
+    val first = SshConnectionService.retain(context, { tasks.add(it) }) { fail("Unexpected disconnect") }
+    val second = SshConnectionService.retain(context, { tasks.add(it) }) { fail("Unexpected disconnect") }
     val application = shadowOf(context)
     val controller = Robolectric.buildService(SshConnectionService::class.java, application.nextStartedService)
       .create().startCommand(0, 1)
@@ -64,7 +64,7 @@ class SshConnectionServiceTest {
 
   @Test
   fun `service shutdown closes its SSH sessions and finishes their background tasks`() {
-    val context = RuntimeEnvironment.getApplication<android.app.Application>()
+    val context = RuntimeEnvironment.getApplication()
     var disconnected = false
     val lease = SshConnectionService.retain(context, {}) { disconnected = true }
     val closed = SshConnectionService.waitUntilClosed(lease.id)
@@ -79,7 +79,7 @@ class SshConnectionServiceTest {
 
   @Test
   fun `cancel before service startup leaves no background task or persistent notification`() {
-    val context = RuntimeEnvironment.getApplication<android.app.Application>()
+    val context = RuntimeEnvironment.getApplication()
     val lease = SshConnectionService.retain(context, { fail("Cancelled task started") }) {
       fail("Cancelled session disconnected twice")
     }
@@ -98,7 +98,7 @@ class SshConnectionServiceTest {
 
   @Test
   fun `a denied foreground start rolls back the lease without running SSH cleanup`() {
-    val context = RuntimeEnvironment.getApplication<android.app.Application>()
+    val context = RuntimeEnvironment.getApplication()
     val denied = object : ContextWrapper(context) {
       override fun startForegroundService(service: Intent): android.content.ComponentName? {
         throw IllegalStateException("Background start denied")
