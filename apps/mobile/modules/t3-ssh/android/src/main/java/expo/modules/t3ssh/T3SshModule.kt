@@ -5,6 +5,7 @@ import android.util.Log
 import android.net.ConnectivityManager
 import android.net.Network
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.ReactContext
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
 import com.facebook.react.jstasks.HeadlessJsTaskContext
 import expo.modules.kotlin.Promise
@@ -129,7 +130,7 @@ class T3SshModule : Module() {
         }
         registered = connection
         synchronized(lock) {
-          val context = requireNotNull(appContext.reactContext)
+          val context = requireNotNull(appContext.reactContext as? ReactContext)
           connection.backgroundLease = SshConnectionService.retain(context, { id ->
             // RN otherwise pauses the RPC heartbeat timers when the activity is backgrounded.
             HeadlessJsTaskContext.getInstance(context).startTask(HeadlessJsTaskConfig(

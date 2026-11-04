@@ -98,7 +98,19 @@ jobs:
 
       - name: Test mobile SSH and local notifications
         if: ${{ !cancelled() }}
-        run: vp test run apps/mobile/src/connection/ssh apps/mobile/src/features/connection apps/mobile/src/features/agent-awareness/localThreadNotifications.test.ts
+        working-directory: apps/mobile
+        run: |
+          set -o pipefail
+          vp test run --config vite.config.ts src/connection/ssh src/features/connection src/features/agent-awareness/localThreadNotifications.test.ts 2>&1 | tee "$RUNNER_TEMP/mobile-ssh-tests.log"
+
+      - name: Upload mobile test diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-mobile-ssh-test-log
+          path: ${{ runner.temp }}/mobile-ssh-tests.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Lint
         if: ${{ !cancelled() }}
@@ -166,7 +178,9 @@ jobs:
       - name: SSH and agent notification unit tests
         if: ${{ !cancelled() }}
         working-directory: apps/mobile/android
-        run: ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64 --max-workers=4
+        run: |
+          set -o pipefail
+          ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64 --max-workers=4 2>&1 | tee "$RUNNER_TEMP/native-ssh-tests.log"
 
       - name: Upload SSH test results
         if: ${{ !cancelled() }}
@@ -174,6 +188,7 @@ jobs:
         with:
           name: t3code-android-ssh-tests
           path: |
+            ${{ runner.temp }}/native-ssh-tests.log
             apps/mobile/modules/t3-ssh/android/build/reports/tests/testDebugUnitTest/
             apps/mobile/modules/t3-agent-notifications/android/build/reports/tests/testDebugUnitTest/
           if-no-files-found: warn
