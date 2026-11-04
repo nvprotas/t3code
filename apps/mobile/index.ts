@@ -11,8 +11,11 @@ import { featureFlags } from "react-native-screens";
 import App from "./src/App";
 import { sshNative } from "./src/connection/ssh/native";
 
-AppRegistry.registerHeadlessTask("T3SshConnection", () => ({ leaseId }: { leaseId: string }) =>
-  sshNative?.waitForBackgroundSession(leaseId) ?? Promise.resolve(),
+AppRegistry.registerHeadlessTask(
+  "T3SshConnection",
+  () =>
+    ({ leaseId }: { leaseId: string }) =>
+      sshNative?.waitForBackgroundSession(leaseId) ?? Promise.resolve(),
 );
 
 // Enables iOS FormSheet sizing for nested native stacks in non-fitToContents sheets.

@@ -52,7 +52,6 @@ import {
 
 export {
   buildRemoteNodeEnvScript,
-  buildRemotePairingScript,
   buildRemoteT3RunnerScript,
   SshInvalidArchiveVersionError,
   SshMissingRunnerError,
@@ -67,12 +66,7 @@ const TUNNEL_SHUTDOWN_TIMEOUT_MS = 2_000;
 const TUNNEL_STDERR_TAIL_CHARS = 16_384;
 const REMOTE_READY_TIMEOUT_MS = 60_000;
 const REMOTE_LAUNCH_TIMEOUT_MS = 90_000;
-// A cold archive launch also downloads and unpacks a ~70 MB release archive
-// and may wait on another installer's lock. The budgets nest: the checksum
-// file is tiny and the archive download is bounded; a waiter outlasts both
-// downloads plus extraction so it can reuse the result; and the SSH command
-// outlasts an install (own or waited-for) plus readiness, with slack for
-// verification and extraction, which have no timeout of their own.
+// Cold archive launches must outlast download, extraction, install-lock waits and readiness.
 const REMOTE_ARCHIVE_LAUNCH_TIMEOUT_MS = 900_000;
 const REMOTE_REUSE_READY_TIMEOUT_MS = 2_000;
 
@@ -194,7 +188,7 @@ function normalizeSshErrorMessage(stderr: string, fallbackMessage: string): stri
   return cleaned.length > 0 ? cleaned : fallbackMessage;
 }
 
-export const REMOTE_PICK_PORT_SCRIPT = `const fs = require("node:fs");
+const REMOTE_PICK_PORT_SCRIPT = `const fs = require("node:fs");
 const net = require("node:net");
 const filePath = process.argv[2] ?? "";
 const defaultPort = Number.parseInt(process.argv[3] ?? "", 10);
@@ -523,7 +517,7 @@ if [ -f "$LOG_FILE" ]; then
 fi
 `;
 
-export function buildRemoteLaunchScript(input?: RemoteT3RunnerOptions): string {
+function buildRemoteLaunchScript(input?: RemoteT3RunnerOptions): string {
   return applyScriptPlaceholders(REMOTE_LAUNCH_SCRIPT, {
     T3_ARCHIVE_MODE: isNodeScriptRunner(input) ? "0" : "1",
     T3_NODE_ENV_SCRIPT: buildRemoteNodeEnvScript(input),
@@ -538,7 +532,7 @@ export function buildRemoteLaunchScript(input?: RemoteT3RunnerOptions): string {
   });
 }
 
-export function buildRemoteStopScript(stateKey: string): string {
+function buildRemoteStopScript(stateKey: string): string {
   return applyScriptPlaceholders(REMOTE_STOP_SCRIPT, {
     T3_STATE_KEY: stateKey,
   });

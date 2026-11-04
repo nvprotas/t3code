@@ -259,10 +259,8 @@ The SSH account must allow TCP forwarding. The app finds the server through
 as the same user with the default T3 home.
 
 SSH connections stay active when you switch to another app. Android shows an
-ongoing SSH notification; allow notifications and Live Updates in the system
-settings to show its status beside the clock on supported phones. Turn off the
-environment or remove its SSH route to disconnect. Closing the app from the
-recent-apps list also ends its SSH connections.
+ongoing SSH notification. Turn off the environment or remove its SSH route to
+disconnect. Closing the app from the recent-apps list also ends its SSH connections.
 
 App builds without T3 Connect cannot receive push notifications. Turn on
 **Settings → Notifications → Thread Notifications** to get alerts when a thread
@@ -270,6 +268,12 @@ finishes, fails, or needs input. They only arrive while the app keeps its
 connection. With an active SSH connection, the app can keep receiving updates
 in the background. Android battery restrictions or a lost network can still
 interrupt delivery; force-stopping the app ends it.
+
+On Android, **Agent Live Updates** in the same settings page shows whether an
+agent is working, needs approval or an answer, or has just finished. Allow Live
+Updates in Android's notification settings to show the status beside the clock
+on supported phones. Tapping it opens the relevant thread. Completed runs stay
+visible briefly; disconnected environments stop contributing to the status.
 
 ## Browser on a remote environment
 

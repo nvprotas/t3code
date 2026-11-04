@@ -68,19 +68,19 @@ export function SshConnectionForm({
     targets: new Map<string, DesktopSshEnvironmentTarget>(),
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Release temporary native SSH keys and credentials when their form unmounts.
   useEffect(() => {
     const owned = resources.current;
     owned.mounted = true;
+    async function cleanup() {
+      for (const target of owned.targets.values()) await cleanupSshCredentials(target);
+      if (owned.key !== null) await cleanupUnusedSshKey(owned.key.keyRef);
+    }
     return () => {
       owned.mounted = false;
       // An in-flight operation releases its resources when it settles.
       if (!owned.busy) void cleanup();
     };
-
-    async function cleanup() {
-      for (const target of owned.targets.values()) await cleanupSshCredentials(target);
-      if (owned.key !== null) await cleanupUnusedSshKey(owned.key.keyRef);
-    }
   }, []);
 
   const finishOperation = async () => {

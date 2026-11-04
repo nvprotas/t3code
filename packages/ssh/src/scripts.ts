@@ -122,7 +122,7 @@ export function stripTrailingNewlines(value: string): string {
   return value.replace(/\n+$/u, "");
 }
 
-export function shellSingleQuote(value: string): string {
+function shellSingleQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 

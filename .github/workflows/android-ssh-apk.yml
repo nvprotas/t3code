@@ -238,16 +238,18 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: SSH module unit tests
+      - name: SSH and agent notification unit tests
         if: ${{ !cancelled() }}
         working-directory: apps/mobile/android
-        run: ./gradlew :t3-ssh:testDebugUnitTest --max-workers=4
+        run: ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest --max-workers=4
 
       - name: Upload SSH test results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: t3code-android-ssh-tests
-          path: apps/mobile/modules/t3-ssh/android/build/reports/tests/testDebugUnitTest/
+          path: |
+            apps/mobile/modules/t3-ssh/android/build/reports/tests/testDebugUnitTest/
+            apps/mobile/modules/t3-agent-notifications/android/build/reports/tests/testDebugUnitTest/
           if-no-files-found: warn
           retention-days: 14

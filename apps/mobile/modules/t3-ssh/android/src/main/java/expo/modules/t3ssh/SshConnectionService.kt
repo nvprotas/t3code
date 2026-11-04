@@ -48,8 +48,6 @@ class SshConnectionService : Service() {
         .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .setColorized(false)
-        .setRequestPromotedOngoing(true)
-        .setShortCriticalText("SSH")
         .build()
       if (Build.VERSION.SDK_INT >= 29) {
         startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
