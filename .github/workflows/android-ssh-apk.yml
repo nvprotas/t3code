@@ -157,6 +157,27 @@ jobs:
           key: android-ssh-apk
           max-size: 2G
 
+      - name: Generate Android project
+        if: ${{ !cancelled() }}
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --clean --platform android --no-install
+
+      - name: SSH and agent notification unit tests
+        if: ${{ !cancelled() }}
+        working-directory: apps/mobile/android
+        run: ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest --max-workers=4
+
+      - name: Upload SSH test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh-tests
+          path: |
+            apps/mobile/modules/t3-ssh/android/build/reports/tests/testDebugUnitTest/
+            apps/mobile/modules/t3-agent-notifications/android/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build release APK
         if: ${{ !cancelled() }}
         working-directory: apps/mobile
@@ -166,7 +187,6 @@ jobs:
           CCACHE_BASEDIR: ${{ github.workspace }}
           CCACHE_NOHASHDIR: "true"
         run: |
-          pnpm exec expo prebuild --clean --platform android --no-install
           cd android
           ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=4 --build-cache
           ccache --show-stats
@@ -235,21 +255,5 @@ jobs:
         with:
           name: t3code-android-ssh-sourcemap
           path: apps/mobile/android/app/build/generated/sourcemaps/react/release/index.android.bundle.map
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: SSH and agent notification unit tests
-        if: ${{ !cancelled() }}
-        working-directory: apps/mobile/android
-        run: ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest --max-workers=4
-
-      - name: Upload SSH test results
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: t3code-android-ssh-tests
-          path: |
-            apps/mobile/modules/t3-ssh/android/build/reports/tests/testDebugUnitTest/
-            apps/mobile/modules/t3-agent-notifications/android/build/reports/tests/testDebugUnitTest/
           if-no-files-found: warn
           retention-days: 14

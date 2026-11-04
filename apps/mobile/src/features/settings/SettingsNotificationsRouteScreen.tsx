@@ -190,7 +190,7 @@ function LocalSettingsNotificationsRouteScreen() {
           />
           {Platform.OS === "android" ? (
             <SettingsSwitchRow
-              icon="waveform.path"
+              icon="bolt.circle"
               label="Agent Live Updates"
               subtitle="Show Working, requests for input, and completed runs beside the clock."
               disabled={!enabled}

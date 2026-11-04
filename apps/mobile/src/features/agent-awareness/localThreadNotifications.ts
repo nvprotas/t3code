@@ -138,9 +138,7 @@ export function localAndroidAgentActivity(
     }
     return [{ thread, ...ACTIVITY_PRESENTATIONS[status], terminal, occurredAt }];
   });
-  rows.sort(
-    (left, right) => left.priority - right.priority || right.occurredAt - left.occurredAt,
-  );
+  rows.sort((left, right) => left.priority - right.priority || right.occurredAt - left.occurredAt);
   const hero = rows[0];
   if (!hero) return null;
   const lineText = (value: string) => value.replace(/[\t\r\n]/gu, " ").slice(0, 120);

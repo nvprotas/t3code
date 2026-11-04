@@ -39,7 +39,9 @@ function EnabledLocalNotifications() {
   useEffect(() => {
     const live = new Set(
       environments
-        .filter((environment) => environment.isEnabled && environment.connectionState === "connected")
+        .filter(
+          (environment) => environment.isEnabled && environment.connectionState === "connected",
+        )
         .map((environment) => environment.environmentId),
     );
     const next = new Map<string, ThreadEntry>();
