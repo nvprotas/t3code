@@ -21,6 +21,7 @@ import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { extractJsonObject, fromLenientJson } from "@t3tools/shared/schemaJson";
 import { buildMobilePairingScript, REMOTE_RUNTIME_DISCOVERY_SCRIPT } from "@t3tools/ssh/scripts";
 import * as Effect from "effect/Effect";
+import * as Clock from "effect/Clock";
 import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 
@@ -152,161 +153,165 @@ export function makeMobileSshGateway(
   };
   const close = (sessionId: string) => call(() => native.close(sessionId));
 
-  const connect = (target: DesktopSshEnvironmentTarget, credentials: SshTargetCredentials) =>
-    Effect.gen(function* () {
-      const destination = `${target.username ?? ""}@${target.hostname}:${target.port ?? 22}`;
-      let passphrase = passphrases.get(credentials.keyRef) ?? null;
-      let retry = passphrase !== null;
-      while (true) {
-        attemptSequence += 1;
-        const attemptId = `mobile-ssh-${Date.now()}-${attemptSequence}`;
-        const connected = yield* Effect.tryPromise({
-          try: async (signal) => {
-            let active = true;
-            let prompting = false;
-            const cancel = () => {
-              void native.cancel(attemptId).catch(() => undefined);
-            };
-            const subscription = native.addListener("onHostKey", (event) => {
-              if (event.attemptId !== attemptId || !active || prompting) return;
-              prompting = true;
-              void deps
-                .requestHostKeyConfirmation({ destination, fingerprint: event.fingerprint })
-                .then((accept) => {
-                  if (active) return native.confirmHostKey(attemptId, accept);
-                })
-                .catch(cancel);
+  const connect = Effect.fn("mobile/ssh.connect")(function* (
+    target: DesktopSshEnvironmentTarget,
+    credentials: SshTargetCredentials,
+  ) {
+    const destination = `${target.username ?? ""}@${target.hostname}:${target.port ?? 22}`;
+    let passphrase = passphrases.get(credentials.keyRef) ?? null;
+    let retry = passphrase !== null;
+    while (true) {
+      attemptSequence += 1;
+      const attemptId = `mobile-ssh-${yield* Clock.currentTimeMillis}-${attemptSequence}`;
+      const connected = yield* Effect.tryPromise({
+        try: async (signal) => {
+          let active = true;
+          let prompting = false;
+          const cancel = () => {
+            void native.cancel(attemptId).catch(() => undefined);
+          };
+          const subscription = native.addListener("onHostKey", (event) => {
+            if (event.attemptId !== attemptId || !active || prompting) return;
+            prompting = true;
+            void deps
+              .requestHostKeyConfirmation({ destination, fingerprint: event.fingerprint })
+              .then((accept) => {
+                if (active) return native.confirmHostKey(attemptId, accept);
+              })
+              .catch(cancel);
+          });
+          signal.addEventListener("abort", cancel, { once: true });
+          try {
+            const session = await native.connect({
+              attemptId,
+              hostname: target.hostname,
+              port: target.port ?? 22,
+              username: target.username ?? "",
+              keyRef: credentials.keyRef,
+              passphrase,
+              hostKey: credentials.hostKey,
             });
-            signal.addEventListener("abort", cancel, { once: true });
-            try {
-              const session = await native.connect({
-                attemptId,
-                hostname: target.hostname,
-                port: target.port ?? 22,
-                username: target.username ?? "",
-                keyRef: credentials.keyRef,
-                passphrase,
-                hostKey: credentials.hostKey,
+            if (signal.aborted) {
+              await native.close(session.sessionId);
+              throw new ConnectionBlockedError({
+                reason: "authentication",
+                detail: "SSH connection cancelled.",
               });
-              if (signal.aborted) {
-                await native.close(session.sessionId);
-                throw new ConnectionBlockedError({
-                  reason: "authentication",
-                  detail: "SSH connection cancelled.",
-                });
-              }
-              return session;
-            } finally {
-              active = false;
-              signal.removeEventListener("abort", cancel);
-              subscription.remove();
             }
-          },
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.matchEffect({
-            onSuccess: (session) => Effect.succeed(session),
-            onFailure: (cause) =>
-              sshNativeErrorCode(cause) === "SSH_PASSPHRASE_REQUIRED"
-                ? Effect.succeed(null)
-                : Effect.fail(nativeError(cause)),
-          }),
-        );
-        if (connected !== null) {
-          if (passphrase !== null) passphrases.set(credentials.keyRef, passphrase);
-          return connected;
-        }
-        passphrases.delete(credentials.keyRef);
-        passphrase = yield* call(() => deps.requestPassphrase({ destination, retry }));
-        if (passphrase === null) {
-          return yield* new ConnectionBlockedError({
-            reason: "authentication",
-            detail: "SSH passphrase entry was cancelled.",
-          });
-        }
-        rememberSecret(passphrase);
-        retry = true;
+            return session;
+          } finally {
+            active = false;
+            signal.removeEventListener("abort", cancel);
+            subscription.remove();
+          }
+        },
+        catch: (cause) => ({ code: sshNativeErrorCode(cause), error: nativeError(cause) }),
+      }).pipe(
+        Effect.matchEffect({
+          onSuccess: (session) => Effect.succeed(session),
+          onFailure: (cause) =>
+            cause.code === "SSH_PASSPHRASE_REQUIRED"
+              ? Effect.succeed(null)
+              : Effect.fail(cause.error),
+        }),
+      );
+      if (connected !== null) {
+        if (passphrase !== null) passphrases.set(credentials.keyRef, passphrase);
+        return connected;
       }
-    });
+      passphrases.delete(credentials.keyRef);
+      passphrase = yield* call(() => deps.requestPassphrase({ destination, retry }));
+      if (passphrase === null) {
+        return yield* new ConnectionBlockedError({
+          reason: "authentication",
+          detail: "SSH passphrase entry was cancelled.",
+        });
+      }
+      rememberSecret(passphrase);
+      retry = true;
+    }
+  });
 
-  const open = (target: DesktopSshEnvironmentTarget, credentials: SshTargetCredentials) =>
-    Effect.gen(function* () {
-      const key = sshTargetKey(target);
-      const session = yield* connect(target, credentials);
-      const subscription = native.addListener("onClosed", (event) => {
-        if (event.sessionId !== session.sessionId) return;
-        if (tunnels.get(key)?.sessionId === session.sessionId) tunnels.delete(key);
-        subscription.remove();
-      });
-      return yield* Effect.gen(function* () {
-        if (credentials.hostKey === null) {
-          yield* call(() => deps.updateSshCredentials(target, { hostKey: session.hostKey }));
-        }
-        const discovery = yield* call(() =>
-          native.exec(session.sessionId, "sh -s", REMOTE_RUNTIME_DISCOVERY_SCRIPT, 15_000),
-        );
-        if (discovery.exitCode !== 0) {
-          return yield* new ConnectionTransientError({
-            reason: "remote-unavailable",
-            detail: "Could not discover the remote T3 Code server.",
-          });
-        }
-        const { runtime, alive } = yield* decodeDiscovery(extractJsonObject(discovery.stdout)).pipe(
-          Effect.mapError(
-            () =>
-              new ConnectionTransientError({
-                reason: "remote-unavailable",
-                detail: "The remote T3 Code runtime state is invalid.",
-              }),
-          ),
-        );
-        if (runtime === null || !alive) {
-          return yield* new ConnectionTransientError({
-            reason: "remote-unavailable",
-            detail: `T3 Code is not running on ${target.hostname}. Start it there (for example \`npx t3\`) and retry.`,
-          });
-        }
-        const remoteHost = yield* Effect.try({
-          try: () => {
-            const hostname = runtime.origin === "" ? "" : new URL(runtime.origin).hostname;
-            return ["", "0.0.0.0", "::", "[::]"].includes(hostname)
-              ? "127.0.0.1"
-              : hostname.replace(/^\[|\]$/gu, "");
-          },
-          catch: () =>
+  const open = Effect.fn("mobile/ssh.open")(function* (
+    target: DesktopSshEnvironmentTarget,
+    credentials: SshTargetCredentials,
+  ) {
+    const key = sshTargetKey(target);
+    const session = yield* connect(target, credentials);
+    const subscription = native.addListener("onClosed", (event) => {
+      if (event.sessionId !== session.sessionId) return;
+      if (tunnels.get(key)?.sessionId === session.sessionId) tunnels.delete(key);
+      subscription.remove();
+    });
+    return yield* Effect.gen(function* () {
+      if (credentials.hostKey === null) {
+        yield* call(() => deps.updateSshCredentials(target, { hostKey: session.hostKey }));
+      }
+      const discovery = yield* call(() =>
+        native.exec(session.sessionId, "sh -s", REMOTE_RUNTIME_DISCOVERY_SCRIPT, 15_000),
+      );
+      if (discovery.exitCode !== 0) {
+        return yield* new ConnectionTransientError({
+          reason: "remote-unavailable",
+          detail: "Could not discover the remote T3 Code server.",
+        });
+      }
+      const { runtime, alive } = yield* decodeDiscovery(extractJsonObject(discovery.stdout)).pipe(
+        Effect.mapError(
+          () =>
             new ConnectionTransientError({
               reason: "remote-unavailable",
-              detail: "The remote T3 Code origin is invalid.",
+              detail: "The remote T3 Code runtime state is invalid.",
             }),
-        });
-        const { localPort } = yield* call(() =>
-          native.forward(session.sessionId, remoteHost, runtime.port),
-        );
-        if (!(yield* isOpen(session.sessionId))) {
-          return yield* new ConnectionTransientError({
-            reason: "network",
-            detail: "The SSH session closed.",
-          });
-        }
-        const tunnel: Tunnel = {
-          sessionId: session.sessionId,
-          localPort,
-          remotePort: runtime.port,
-          removeClosedListener: () => subscription.remove(),
-        };
-        tunnels.set(key, tunnel);
-        return tunnel;
-      }).pipe(
-        Effect.onExit((exit) =>
-          Exit.isFailure(exit)
-            ? close(session.sessionId).pipe(
-                Effect.ignore,
-                Effect.ensuring(Effect.sync(() => subscription.remove())),
-              )
-            : Effect.void,
         ),
       );
-    });
+      if (runtime === null || !alive) {
+        return yield* new ConnectionTransientError({
+          reason: "remote-unavailable",
+          detail: `T3 Code is not running on ${target.hostname}. Start it there (for example \`npx t3\`) and retry.`,
+        });
+      }
+      const remoteHost = yield* Effect.try({
+        try: () => {
+          const hostname = runtime.origin === "" ? "" : new URL(runtime.origin).hostname;
+          return ["", "0.0.0.0", "::", "[::]"].includes(hostname)
+            ? "127.0.0.1"
+            : hostname.replace(/^\[|\]$/gu, "");
+        },
+        catch: () =>
+          new ConnectionTransientError({
+            reason: "remote-unavailable",
+            detail: "The remote T3 Code origin is invalid.",
+          }),
+      });
+      const { localPort } = yield* call(() =>
+        native.forward(session.sessionId, remoteHost, runtime.port),
+      );
+      if (!(yield* isOpen(session.sessionId))) {
+        return yield* new ConnectionTransientError({
+          reason: "network",
+          detail: "The SSH session closed.",
+        });
+      }
+      const tunnel: Tunnel = {
+        sessionId: session.sessionId,
+        localPort,
+        remotePort: runtime.port,
+        removeClosedListener: () => subscription.remove(),
+      };
+      tunnels.set(key, tunnel);
+      return tunnel;
+    }).pipe(
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit)
+          ? close(session.sessionId).pipe(
+              Effect.ignore,
+              Effect.ensuring(Effect.sync(() => subscription.remove())),
+            )
+          : Effect.void,
+      ),
+    );
+  });
 
   const provision = (target: DesktopSshEnvironmentTarget, expectedEnvironmentId?: EnvironmentId) =>
     lock.withLock(

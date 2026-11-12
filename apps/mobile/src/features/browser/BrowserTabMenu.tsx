@@ -1,4 +1,5 @@
 import * as Dialog from "../../components/ui/Dialog";
+import { useAtomValue } from "@effect/atom-react";
 import type { MenuAction } from "@react-native-menu/menu";
 import {
   DEFAULT_PREVIEW_ZOOM_FACTOR,
@@ -22,7 +23,6 @@ const APPEARANCES = [
   { id: "dark", title: "Dark" },
 ] as const;
 
-/** One preset per kind of screen; the web's device toolbar offers the full list. */
 const VIEWPORTS = [
   { id: "fill", title: "Fit to screen", setting: FILL_PREVIEW_VIEWPORT },
   ...(["Phone", "Tablet", "Desktop"] as const).flatMap((category) => {
@@ -38,22 +38,21 @@ const VIEWPORTS = [
   }),
 ];
 
-/**
- * The browser tab's menu: appearance, zoom, viewport, a hard reload, and its
- * profile's site data. Each runs through the environment, as on web and
- * desktop, so every client and agent sees the same tab. None need control.
- */
 export function BrowserTabMenu({
   environmentId,
   tab,
-  disabled,
+  streaming,
+  onPaste,
 }: {
   readonly environmentId: EnvironmentId;
   readonly tab: PreviewSessionSnapshot;
-  readonly disabled: boolean;
+  readonly streaming: boolean;
+  readonly onPaste?: () => void;
 }) {
   const adjust = useAtomCommand(previewEnvironment.adjust, "browser tab change");
   const resize = useAtomCommand(previewEnvironment.resize, "browser viewport change");
+  const close = useAtomCommand(previewEnvironment.close, "browser tab close");
+  const canClose = useAtomValue(previewEnvironment.close.permissionAtom(environmentId));
   const target = { threadId: tab.threadId as PreviewAdjustInput["threadId"], tabId: tab.tabId };
   const colorScheme = tab.colorScheme ?? "system";
   const zoomFactor = tab.zoomFactor ?? DEFAULT_PREVIEW_ZOOM_FACTOR;
@@ -69,7 +68,14 @@ export function BrowserTabMenu({
         ? `preset:${tab.viewport.presetId}`
         : "custom";
 
+  const closeAction: MenuAction = {
+    id: "close",
+    title: "Close tab",
+    image: "xmark",
+    attributes: { destructive: true, disabled: !canClose },
+  };
   const actions: MenuAction[] = [
+    ...(onPaste ? [{ id: "paste", title: "Paste", image: "doc.on.clipboard" }] : []),
     { id: "hard-reload", title: "Hard reload", image: "arrow.clockwise.circle" },
     {
       id: "appearance",
@@ -110,6 +116,7 @@ export function BrowserTabMenu({
         { id: "clear:cache", title: "Clear cache", attributes: { destructive: true } },
       ],
     },
+    closeAction,
   ];
 
   const run = async (change: Omit<PreviewAdjustInput, "threadId" | "tabId">) => {
@@ -118,6 +125,13 @@ export function BrowserTabMenu({
   };
 
   const onAction = (id: string) => {
+    if (id === "close") {
+      void close({ environmentId, input: target }).then((result) => {
+        if (result._tag === "Failure") Dialog.alert("Could not close this browser tab");
+      });
+      return;
+    }
+    if (id === "paste") return onPaste?.();
     if (id === "hard-reload") return void run({ hardReload: true });
     if (id === "zoom:in") return void run({ zoomFactor: zoomTo(1) });
     if (id === "zoom:out") return void run({ zoomFactor: zoomTo(-1) });
@@ -140,19 +154,18 @@ export function BrowserTabMenu({
     }
   };
 
-  const pill = (
-    <ControlPill icon="ellipsis" accessibilityLabel="Browser tab options" disabled={disabled} />
-  );
-  if (disabled) return pill;
   return (
     <Menu
+      // Remount when streaming changes, so an open menu never keeps offering
+      // the other state's actions.
+      key={streaming ? "streaming" : "idle"}
       accessible
       accessibilityLabel="Browser tab options"
       accessibilityRole="button"
-      actions={actions}
+      actions={streaming ? actions : [closeAction]}
       onPressAction={({ nativeEvent }) => onAction(nativeEvent.event)}
     >
-      {pill}
+      <ControlPill icon="ellipsis" accessibilityLabel="Browser tab options" />
     </Menu>
   );
 }

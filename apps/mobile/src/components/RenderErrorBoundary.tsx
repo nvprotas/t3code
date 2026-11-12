@@ -1,3 +1,4 @@
+import { Observe } from "expo-observe";
 import { Component, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 
@@ -33,7 +34,6 @@ function errorDetails(error: unknown, componentStack?: string): string {
   return componentStack ? `${description}\nComponent stack:\n${componentStack}` : description;
 }
 
-/** A failed subtree remounts on retry or when its identifying inputs change. */
 export class RenderErrorBoundary extends Component<
   RenderErrorBoundaryProps,
   RenderErrorBoundaryState
@@ -61,7 +61,9 @@ export class RenderErrorBoundary extends Component<
     return { failed: true, error };
   }
 
-  override componentDidCatch(_error: unknown, info: { componentStack?: string }) {
+  override componentDidCatch(error: unknown, info: { componentStack?: string }) {
+    // A caught render error never reaches Observe's global handler.
+    Observe.reportError(error);
     this.setState({ componentStack: info.componentStack });
   }
 

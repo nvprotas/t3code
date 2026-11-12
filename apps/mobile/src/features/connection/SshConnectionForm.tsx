@@ -44,10 +44,8 @@ function sshErrorMessage(error: unknown): string {
 
 export function SshConnectionForm({
   expectedEnvironmentId,
-  formSheet,
 }: {
   readonly expectedEnvironmentId: EnvironmentId | undefined;
-  readonly formSheet: boolean;
 }) {
   const navigation = useNavigation();
   const { connectSsh } = useConnectionController();
@@ -68,6 +66,7 @@ export function SshConnectionForm({
     targets: new Map<string, DesktopSshEnvironmentTarget>(),
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Releases imported native SSH credentials after the form unmounts and its operation finishes.
   useEffect(() => {
     const owned = resources.current;
     owned.mounted = true;
@@ -195,7 +194,7 @@ export function SshConnectionForm({
   };
 
   return (
-    <SettingsScreen formSheet={formSheet} title="Connect over SSH">
+    <SettingsScreen title="Connect over SSH">
       <ScreenScrollView
         className="flex-1"
         contentInsetAdjustmentBehavior="automatic"

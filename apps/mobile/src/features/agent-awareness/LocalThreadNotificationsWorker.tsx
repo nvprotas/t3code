@@ -4,7 +4,7 @@ import {
   type PendingSubagentRequest,
   presentThreadShell,
 } from "@t3tools/client-runtime/state/models";
-import { pendingSubagentRequestsByThread } from "@t3tools/client-runtime/state/threads";
+import { environmentThreadShells } from "../../state/threads";
 import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
@@ -24,7 +24,7 @@ import {
 /**
  * Posts thread notifications from the live connection for builds without
  * T3 Connect, where the relay cannot push. Works only while the app process
- * keeps its connection; taps route through useAgentNotificationNavigation.
+ * keeps its connection; taps route through installAgentNotificationNavigation.
  */
 export function LocalThreadNotificationsWorker() {
   const enabled = useAtomValue(
@@ -51,8 +51,12 @@ function EnvironmentLocalNotifications({ environmentId }: { environmentId: Envir
   const shell = useAtomValue(environmentShell.stateValueAtom(environmentId));
   const threads =
     shell.status === "live" && Option.isSome(shell.snapshot) ? shell.snapshot.value.threads : null;
+  const subagentRequests = useAtomValue(
+    environmentThreadShells.pendingSubagentRequestsAtom(environmentId),
+  );
   const previous = useRef(new Map<ThreadId, ThreadEntry>());
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Posts native OS notifications when live thread state changes.
   useEffect(() => {
     if (threads === null) {
       previous.current.clear();
@@ -60,7 +64,6 @@ function EnvironmentLocalNotifications({ environmentId }: { environmentId: Envir
     }
     const next = new Map<ThreadId, ThreadEntry>();
     // Subagents are skipped, so their requests notify through the thread above them.
-    const subagentRequests = pendingSubagentRequestsByThread(threads);
     for (const raw of threads) {
       if (raw.lineage.relationshipToParent === "subagent") continue;
       const prior = previous.current.get(raw.id);
@@ -83,7 +86,7 @@ function EnvironmentLocalNotifications({ environmentId }: { environmentId: Envir
       });
     }
     previous.current = next;
-  }, [environmentId, threads]);
+  }, [environmentId, threads, subagentRequests]);
 
   return null;
 }

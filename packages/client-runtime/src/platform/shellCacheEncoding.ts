@@ -2,22 +2,11 @@ import { OrchestrationV2ThreadShellJson } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
+import { yieldToHostTimer } from "./hostYield.ts";
 import { StoredOrchestrationShellSnapshot } from "./orchestrationCache.ts";
 
 const ROWS_PER_CHUNK = 32;
 
-// Effect's own yield resumes through `setImmediate` where the host defines it and a
-// zero-delay timer otherwise. React Native's `setImmediate` is a microtask shim, so
-// nothing from the host runs before the fiber resumes. A timer yields on every host;
-// a browser can pass a yield that its timer clamping and throttling do not slow.
-const yieldToHostTimer = Effect.callback<void>((resume) => {
-  // @effect-diagnostics-next-line globalTimersInEffect:off - A host timer, not Effect.sleep, is the point.
-  const timer = setTimeout(() => resume(Effect.void), 0);
-  return Effect.sync(() => clearTimeout(timer));
-});
-
-// Rows go through the canonical row codec in chunks. The envelope codec then
-// validates and encodes everything else, passing the encoded rows through as-is.
 const encodeThreadChunk = Schema.encodeEffect(Schema.Array(OrchestrationV2ThreadShellJson));
 const EncodedRows = Schema.Array(Schema.Unknown);
 const encodeEnvelope = Schema.encodeEffect(
@@ -34,11 +23,6 @@ const encodeEnvelope = Schema.encodeEffect(
 );
 
 /**
- * Make an encoder for the shell cache payload that produces exactly what
- * `fromJsonString(StoredOrchestrationShellSnapshot)` would, yielding to the host
- * between bounded chunks of thread rows. The final envelope encode and JSON
- * stringify still run synchronously over the whole payload.
- *
  * Shell rows are immutable and the shell reducer keeps unchanged rows by
  * reference, so each encoder remembers the canonical encoding of rows it has
  * already encoded successfully and only runs the row codec for new rows.
@@ -58,14 +42,16 @@ export function makeStoredShellSnapshotEncoder(
       hasWorked = true;
       return Effect.void;
     });
-    const encodeMisses = (misses: ReadonlyArray<OrchestrationV2ThreadShellJson>) =>
-      Effect.gen(function* () {
+    const encodeMisses =
+      /* Cache encoding runs for shell update batches; avoid tracing each batch. */
+      Effect.fnUntraced(function* (misses: ReadonlyArray<OrchestrationV2ThreadShellJson>) {
         yield* yieldBetweenChunks;
         const chunk = yield* encodeThreadChunk(misses);
         chunk.forEach((row, index) => encodedRows.set(misses[index]!, row));
       });
-    const encodeRows = (rows: ReadonlyArray<OrchestrationV2ThreadShellJson>) =>
-      Effect.gen(function* () {
+    const encodeRows =
+      /* Cache encoding runs for shell update batches; avoid tracing each batch. */
+      Effect.fnUntraced(function* (rows: ReadonlyArray<OrchestrationV2ThreadShellJson>) {
         let misses: Array<OrchestrationV2ThreadShellJson> = [];
         for (const row of rows) {
           if (encodedRows.has(row)) continue;

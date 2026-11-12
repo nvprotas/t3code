@@ -7,7 +7,6 @@ import { AppText } from "./AppText";
 import { SymbolView } from "./AppSymbol";
 import { useAndroidControlSizing } from "./useAndroidControlSizing";
 
-/** Shared geometry for Material navigation and selection lists. Group rows in one card. */
 export function NavigationRow({
   title,
   titleClassName,
@@ -34,7 +33,6 @@ export function NavigationRow({
       accessibilityRole="button"
       accessibilityLabel={[title, subtitle].filter(Boolean).join(", ")}
       android_ripple={{ color: themeVariables["--color-subtle-strong"] }}
-      // Give the scroll view time to claim drags before starting the ripple.
       unstable_pressDelay={Platform.OS === "android" ? 50 : undefined}
       {...props}
       className={cn(

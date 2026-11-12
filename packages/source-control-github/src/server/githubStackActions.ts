@@ -83,7 +83,6 @@ export class GitHubStackRebaseFailedError extends Schema.TaggedError<GitHubStack
   { ...stackErrorIdentity, completed: Schema.Int, cause: Schema.Defect() },
 ) {
   override get message(): string {
-    // A conflict or a refused push already says which layer and what to do about it.
     return this.cause instanceof Error && this.cause.message !== ""
       ? this.cause.message
       : `Stack rebase stopped at PR #${this.number} after ${this.completed} layers. Earlier updates remain on GitHub; resolve the failing layer before retrying.`;
@@ -109,7 +108,6 @@ const MergeResponse = Schema.Struct({
 
 const decodeMergeResponse = Schema.decodeEffect(Schema.fromJsonString(MergeResponse));
 
-/** Remote-only updates: a stack rebase works in a scratch clone, never the environment's checkout. */
 export const runGitHubStackAction = Effect.fn("runGitHubStackAction")(function* (input: {
   cwd: string;
   repository: string;
@@ -173,7 +171,6 @@ export const runGitHubStackAction = Effect.fn("runGitHubStackAction")(function* 
     const client = yield* GraphQLClient.make(
       StackActionsGraphQLGroup.middleware(GitHubGraphQlClient.GitHubGraphQlAuth),
     ).pipe(Effect.provide(GitHubGraphQlClient.layer));
-    // One aliased request checks every layer; `open` is non-empty here.
     const resolver = GraphQLResolver.aliased(client.PullRequestBranchAccess, {
       batchKey: GitHubGraphQlClient.batchKey,
     }).pipe(RequestResolver.batchN(open.length));
@@ -193,8 +190,7 @@ export const runGitHubStackAction = Effect.fn("runGitHubStackAction")(function* 
         (cause) => new GitHubStackResponseInvalidError({ ...identity, cause }),
       ),
     );
-    // viewerCanUpdateBranch is false for an already-current layer, even if rebasing its parent
-    // will make it stale. Check branch write access separately before touching any layer.
+    // Current layers report viewerCanUpdateBranch=false even if restacking could make them stale.
     if (
       access.some(({ repository }) => {
         const pr = repository?.pullRequest;
@@ -205,8 +201,8 @@ export const runGitHubStackAction = Effect.fn("runGitHubStackAction")(function* 
       })
     )
       return yield* new GitHubStackPermissionError({ ...identity });
-    // GitHub's own "Rebase stack" has no API, and its per-PR "update branch" replays the old
-    // copy of every lower layer into the one above it. The cascade moves each layer's own commits.
+    const mergedHeadSha = stack.layers[stack.layers.indexOf(open[0]!) - 1]?.headSha;
+    // GitHub has no stack-rebase API; per-PR updates replay lower layers' old commits.
     yield* cascadeRebaseStack({
       host: input.host,
       repository: input.repository,
@@ -216,6 +212,7 @@ export const runGitHubStackAction = Effect.fn("runGitHubStackAction")(function* 
         headBranch: layer.headBranch,
         headSha: layer.headSha!,
       })),
+      ...(mergedHeadSha === undefined ? {} : { mergedHeadSha }),
     }).pipe(
       Effect.mapError((cause) =>
         cause._tag === "GitHubStackRebaseConflictError" ||

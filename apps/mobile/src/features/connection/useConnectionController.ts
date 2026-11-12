@@ -11,7 +11,7 @@ import type {
 } from "@t3tools/contracts/relay";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 
 import { environmentCatalog } from "../../connection/catalog";
 import {
@@ -75,65 +75,45 @@ export function useConnectionController() {
     [registeredIds, relayEnvironments],
   );
 
-  const connectPairingUrl = useCallback(
-    (pairingUrl: string, expectedEnvironmentId?: EnvironmentId) =>
-      connectPairingUrlMutation({
-        pairingUrl,
-        ...(expectedEnvironmentId === undefined ? {} : { expectedEnvironmentId }),
-      }),
-    [connectPairingUrlMutation],
-  );
-  const connectRelayEnvironment = useCallback(
-    (environment: RelayClientEnvironmentRecord) =>
-      registerEnvironment(
-        new RelayConnectionRegistration({
-          target: new RelayConnectionTarget({
-            environmentId: environment.environmentId,
-            label: environment.label,
-          }),
+  const connectPairingUrl = (pairingUrl: string, expectedEnvironmentId?: EnvironmentId) =>
+    connectPairingUrlMutation({
+      pairingUrl,
+      ...(expectedEnvironmentId === undefined ? {} : { expectedEnvironmentId }),
+    });
+  const connectRelayEnvironment = (environment: RelayClientEnvironmentRecord) =>
+    registerEnvironment(
+      new RelayConnectionRegistration({
+        target: new RelayConnectionTarget({
+          environmentId: environment.environmentId,
+          label: environment.label,
         }),
-      ),
-    [registerEnvironment],
-  );
-  const connectSsh = useCallback(
-    (input: ConnectionOnboarding.SshConnectionInput) => connectSshMutation(input),
-    [connectSshMutation],
-  );
-  const removeEnvironment = useCallback(
-    async (environmentId: EnvironmentId) => {
-      const entry = appAtomRegistry
-        .get(environmentCatalog.catalogValueAtom)
-        .entries.get(environmentId);
-      const targets = savedSshTargets(entry === undefined ? [] : [entry]);
-      const result = await removeEnvironmentMutation(environmentId);
-      if (AsyncResult.isSuccess(result)) {
-        await Promise.all(targets.map((target) => cleanupSshCredentials(target, environmentId)));
-      }
-      return result;
-    },
-    [removeEnvironmentMutation],
-  );
-  const retryEnvironment = useCallback(
-    (environmentId: EnvironmentId) => retryEnvironmentMutation(environmentId),
-    [retryEnvironmentMutation],
-  );
-  const setEnvironmentEnabled = useCallback(
-    (environmentId: EnvironmentId, enabled: boolean) =>
-      setEnvironmentEnabledMutation({ environmentId, enabled }),
-    [setEnvironmentEnabledMutation],
-  );
-  const updateEnvironment = useCallback(
-    (
-      environmentId: EnvironmentId,
-      updates: { readonly label: string; readonly displayUrl: string },
-    ) =>
-      updateBearer({
-        environmentId,
-        label: updates.label,
-        httpBaseUrl: updates.displayUrl,
       }),
-    [updateBearer],
-  );
+    );
+  const connectSsh = (input: ConnectionOnboarding.SshConnectionInput) => connectSshMutation(input);
+  const removeEnvironment = async (environmentId: EnvironmentId) => {
+    const entry = appAtomRegistry
+      .get(environmentCatalog.catalogValueAtom)
+      .entries.get(environmentId);
+    const targets = savedSshTargets(entry === undefined ? [] : [entry]);
+    const result = await removeEnvironmentMutation(environmentId);
+    if (AsyncResult.isSuccess(result)) {
+      await Promise.all(targets.map((target) => cleanupSshCredentials(target, environmentId)));
+    }
+    return result;
+  };
+  const retryEnvironment = (environmentId: EnvironmentId) =>
+    retryEnvironmentMutation(environmentId);
+  const setEnvironmentEnabled = (environmentId: EnvironmentId, enabled: boolean) =>
+    setEnvironmentEnabledMutation({ environmentId, enabled });
+  const updateEnvironment = (
+    environmentId: EnvironmentId,
+    updates: { readonly label: string; readonly displayUrl: string },
+  ) =>
+    updateBearer({
+      environmentId,
+      label: updates.label,
+      httpBaseUrl: updates.displayUrl,
+    });
 
   return {
     connectedEnvironments,

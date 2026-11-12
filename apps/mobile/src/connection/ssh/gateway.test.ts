@@ -309,8 +309,14 @@ describe("mobile SSH gateway", () => {
       reason: "invalid_credential",
       traceId: "test-trace",
     }),
-    new RemoteEnvironmentAuthUndeclaredStatusError("http://127.0.0.1:41234/api/auth/session", 401),
-    new RemoteEnvironmentAuthUndeclaredStatusError("http://127.0.0.1:41234/api/auth/session", 403),
+    new RemoteEnvironmentAuthUndeclaredStatusError({
+      requestUrl: "http://127.0.0.1:41234/api/auth/session",
+      status: 401,
+    }),
+    new RemoteEnvironmentAuthUndeclaredStatusError({
+      requestUrl: "http://127.0.0.1:41234/api/auth/session",
+      status: 403,
+    }),
   ])("replaces a rejected cached bearer: %s", (rejection) =>
     Effect.gen(function* () {
       const f = fixture();

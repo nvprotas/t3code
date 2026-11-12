@@ -1,7 +1,4 @@
-// Publishes closed-testing betas, or downloads the internal APK for a normal
-// nightly release. Play generates and signs the APK from the
-// uploaded bundle with the app signing key, so it carries the same signature
-// as the Play Store install. Run by .github/workflows/mobile-android-apk.yml.
+// Play signs generated APKs with the app signing key, matching Play Store installs.
 const { execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -18,7 +15,6 @@ function requireEnv(name) {
   return value;
 }
 
-// Service account key -> OAuth access token via a self-signed JWT grant.
 async function playAccessToken(key) {
   const now = Math.floor(Date.now() / 1000);
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -51,10 +47,7 @@ async function play(token, method, url) {
   return response;
 }
 
-// Highest version code the track serves, with its release name. Play names a
-// release after the bundle's versionName unless the uploader sets one. This
-// endpoint reads without opening an edit; an edit would invalidate any open
-// EAS Submit edit made with the same service account.
+// Opening an edit would invalidate any EAS Submit edit using the same service account.
 async function newestTrackBuild(token, appUrl, trackName) {
   const { releases = [] } = await (
     await play(token, "GET", `${appUrl}/tracks/${trackName}/releases`)
@@ -83,8 +76,7 @@ function readRelease(tag) {
   }
 }
 
-// Download to a temporary directory so a failed request cannot leave a partial
-// APK among the release assets.
+// Stage downloads so failed requests cannot leave partial release assets.
 async function downloadApk({ token, appUrl, build, apkName }) {
   const generated = await (
     await play(token, "GET", `${appUrl}/generatedApks/${build.versionCode}`)
@@ -165,25 +157,15 @@ async function main() {
   }
   const safeName = build.versionName.replace(/[^0-9A-Za-z.]+/g, "-").replace(/^-|-$/g, "");
   const apkName = `t3code-android-${channel}-${safeName}-${build.versionCode}.apk`;
-  const tag = outputDirectory ? undefined : requireEnv("RELEASE_TAG");
-  const snapshotTag = `android-beta-${build.versionCode}`;
-  const release = tag ? readRelease(tag) : undefined;
-  const snapshot = tag ? readRelease(snapshotTag) : undefined;
-  const hasApk = (value) =>
-    value &&
-    !value.isDraft &&
-    value.assets.some(
+  const tag = `android-beta-${build.versionCode}`;
+  const release = outputDirectory ? undefined : readRelease(tag);
+  if (
+    release &&
+    !release.isDraft &&
+    release.assets.some(
       (asset) => asset.name === apkName && asset.state === "uploaded" && asset.size > 0,
-    );
-  const pruneBetaAssets = () => {
-    for (const stale of release?.assets ?? []) {
-      if (stale.name.endsWith(".apk") && stale.name !== apkName) {
-        gh("release", "delete-asset", tag, stale.name, "--yes");
-      }
-    }
-  };
-  if (hasApk(release) && hasApk(snapshot)) {
-    pruneBetaAssets();
+    )
+  ) {
     console.log(`${apkName} is already published.`);
     return;
   }
@@ -210,16 +192,8 @@ async function main() {
       "",
       "These builds have been promoted for wider testing, but may still contain bugs. The beta is optional; the store app also works with Nightly servers.",
     ].join("\n");
-    // Publish the versioned beta first, then advance the stable download page.
     // The build number makes retries and unchanged hourly checks idempotent.
-    publishBeta(
-      snapshotTag,
-      apkPath,
-      notes,
-      `Android beta ${build.versionName} (${build.versionCode})`,
-    );
-    publishBeta(tag, apkPath, notes, "T3 Code for Android (beta)");
-    pruneBetaAssets();
+    publishBeta(tag, apkPath, notes, `Android beta ${build.versionName} (${build.versionCode})`);
   } finally {
     fs.rmSync(path.dirname(apkPath), { recursive: true, force: true });
   }
