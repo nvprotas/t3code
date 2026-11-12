@@ -54,7 +54,6 @@ import {
 
 export {
   buildRemoteNodeEnvScript,
-  buildRemotePairingScript,
   buildRemoteT3RunnerScript,
   SshInvalidArchiveVersionError,
   SshMissingRunnerError,

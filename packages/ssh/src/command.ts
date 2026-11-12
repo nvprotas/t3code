@@ -147,7 +147,7 @@ function redactSshErrorOutput(output: string, keepTail = false): string {
     : `${redacted.slice(0, MAX_SSH_ERROR_OUTPUT_LENGTH)}\n[truncated]`;
 }
 
-export function shellSingleQuote(value: string): string {
+function shellSingleQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 

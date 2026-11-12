@@ -31,13 +31,13 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Fetch comparison base
-        run: git fetch --no-tags origin main:refs/remotes/origin/main
+        run: git fetch --no-tags https://github.com/pingdotgg/t3code.git main:refs/remotes/upstream/main
 
       - name: Setup dependencies
         uses: ./.github/actions/setup-ci-deps
 
       - name: Check changed files
-        run: vp run check:changed origin/main --concurrency 1
+        run: vp run check:changed upstream/main --concurrency 1
 
   apk:
     name: Check and build APK
