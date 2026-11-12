@@ -247,6 +247,17 @@ add the shown public key to `~/.ssh/authorized_keys` on the server, or import or
 paste an existing private key. Only key authentication is supported. Keys are
 encrypted on the device and are removed together with the connection.
 
+To connect through a bastion, choose **Use bastion** and enter its SSH address,
+username, and key. The target address is reached from the bastion; for a reverse
+tunnel, enter its assigned address, such as `127.0.0.1:22002`. The app verifies
+the bastion and target host keys separately. This SSH route always uses the
+bastion; other saved routes to the same environment remain available.
+
+If connecting fails, choose **Copy diagnostics** in the SSH form or the saved
+environment's connection details. SSH diagnostics include connection stages and
+error codes, but exclude private keys, passphrases, tokens, and remote command
+output. They stay in memory until the app closes.
+
 On the first connection, compare the displayed host key fingerprint with the
 server's, for example `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. A
 changed host key blocks the connection; remove it and add it again after you

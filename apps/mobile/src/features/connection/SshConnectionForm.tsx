@@ -4,8 +4,6 @@ import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contra
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import * as Clipboard from "expo-clipboard";
-import * as DocumentPicker from "expo-document-picker";
-import { File } from "expo-file-system";
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
@@ -17,12 +15,7 @@ import {
   readSshCredentials,
   writeSshCredentials,
 } from "../../connection/ssh/credentials";
-import {
-  isSshSupported,
-  sshNative,
-  sshNativeErrorCode,
-  type SshKeyInfo,
-} from "../../connection/ssh/native";
+import { isSshSupported, sshNativeErrorCode, type SshKeyInfo } from "../../connection/ssh/native";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { ConnectionFormField } from "./ConnectionFormField";
 import {
@@ -31,39 +24,15 @@ import {
   currentSshTargets,
 } from "./sshCredentialsCleanup";
 import { parseSshTarget } from "./sshTarget";
+import { SshKeyPicker } from "./SshKeyPicker";
+import { sshDiagnosticsText } from "../../connection/ssh/diagnostics";
 import { useConnectionController } from "./useConnectionController";
-
-const MAX_KEY_BYTES = 64 * 1024;
 
 function sshErrorMessage(error: unknown): string {
   if (sshNativeErrorCode(error) === "SSH_KEY_INVALID") {
     return "This private key could not be read. Use an OpenSSH, PEM, or PuTTY private key.";
   }
   return error instanceof Error ? error.message : "Could not connect over SSH. Try again.";
-}
-
-async function importSshKeyFile() {
-  const native = sshNative;
-  if (native === null) return null;
-  const result = await DocumentPicker.getDocumentAsync({
-    copyToCacheDirectory: true,
-    multiple: false,
-  });
-  if (result.canceled) return null;
-  const file = new File(result.assets[0]!.uri);
-  let text: string;
-  try {
-    if (file.size > MAX_KEY_BYTES) {
-      throw new Error("Choose a private key file no larger than 64 KiB.");
-    }
-    text = await file.text();
-    if (new TextEncoder().encode(text).byteLength > MAX_KEY_BYTES) {
-      throw new Error("Choose a private key file no larger than 64 KiB.");
-    }
-  } finally {
-    file.delete();
-  }
-  return native.importKey(text);
 }
 
 async function cleanupEarlierSshAttempts(
@@ -95,15 +64,20 @@ export function SshConnectionForm({
   const [port, setPort] = useState("22");
   const [label, setLabel] = useState("");
   const [key, setKey] = useState<SshKeyInfo | null>(null);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [privateKey, setPrivateKey] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [useBastion, setUseBastion] = useState(false);
+  const [bastionHost, setBastionHost] = useState("");
+  const [bastionUsername, setBastionUsername] = useState("");
+  const [bastionPort, setBastionPort] = useState("22");
+  const [bastionKey, setBastionKey] = useState<SshKeyInfo | null>(null);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [attemptedTarget, setAttemptedTarget] = useState<DesktopSshEnvironmentTarget | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resources = useRef({
     mounted: false,
     busy: false,
     key: null as SshKeyInfo | null,
+    bastionKey: null as SshKeyInfo | null,
     targets: new Map<string, DesktopSshEnvironmentTarget>(),
   });
 
@@ -113,7 +87,9 @@ export function SshConnectionForm({
     owned.mounted = true;
     async function cleanup() {
       for (const target of owned.targets.values()) await cleanupSshCredentials(target);
-      if (owned.key !== null) await cleanupUnusedSshKey(owned.key.keyRef);
+      for (const selected of [owned.key, owned.bastionKey]) {
+        if (selected !== null) await cleanupUnusedSshKey(selected.keyRef);
+      }
     }
     return () => {
       owned.mounted = false;
@@ -129,13 +105,19 @@ export function SshConnectionForm({
       setBusy(false);
     } else {
       for (const target of owned.targets.values()) await cleanupSshCredentials(target);
-      if (owned.key !== null) await cleanupUnusedSshKey(owned.key.keyRef);
+      for (const selected of [owned.key, owned.bastionKey]) {
+        if (selected !== null) await cleanupUnusedSshKey(selected.keyRef);
+      }
     }
   };
 
-  const chooseKey = async (action: () => Promise<SshKeyInfo | null>) => {
+  const chooseKey = async (
+    role: "target" | "bastion",
+    action: () => Promise<SshKeyInfo | null>,
+  ) => {
     const owned = resources.current;
-    if (owned.busy || owned.key !== null) return;
+    const slot = role === "target" ? "key" : "bastionKey";
+    if (owned.busy || owned[slot] !== null) return;
     owned.busy = true;
     setBusy(true);
     setError(null);
@@ -143,11 +125,10 @@ export function SshConnectionForm({
       .then(action)
       .then((next) => {
         if (next !== null) {
-          owned.key = next;
+          owned[slot] = next;
           if (owned.mounted) {
-            setKey(next);
-            setPrivateKey("");
-            setPasteOpen(false);
+            if (role === "target") setKey(next);
+            else setBastionKey(next);
           }
         }
       })
@@ -160,22 +141,45 @@ export function SshConnectionForm({
   const submit = async () => {
     const owned = resources.current;
     const selectedKey = owned.key;
-    if (owned.busy || selectedKey === null) return;
+    if (owned.busy || selectedKey === null || (useBastion && owned.bastionKey === null)) return;
     owned.busy = true;
     setBusy(true);
     setError(null);
+    setDiagnosticsCopied(false);
+    setAttemptedTarget(null);
     await Promise.resolve()
       .then(async () => {
-        const target = parseSshTarget({ host, username, port });
+        const target = {
+          ...parseSshTarget({ host, username, port }),
+          ...(useBastion
+            ? {
+                bastion: parseSshTarget({
+                  host: bastionHost,
+                  username: bastionUsername,
+                  port: bastionPort,
+                }),
+              }
+            : {}),
+        };
+        setAttemptedTarget(target);
         if (currentSshTargets().some((saved) => sshTargetKey(saved) === sshTargetKey(target))) {
           throw new Error("This SSH destination is already saved. Reconnect it from Environments.");
         }
+        const previous = owned.targets.has(sshTargetKey(target))
+          ? await readSshCredentials(target)
+          : null;
         owned.targets.set(sshTargetKey(target), target);
-        await writeSshCredentials(target, {
-          keyRef: selectedKey.keyRef,
-          hostKey: null,
-          bearerToken: null,
-        });
+        await writeSshCredentials(
+          target,
+          previous ?? {
+            keyRef: selectedKey.keyRef,
+            hostKey: null,
+            bearerToken: null,
+            ...(useBastion && owned.bastionKey !== null
+              ? { bastion: { keyRef: owned.bastionKey.keyRef, hostKey: null } }
+              : {}),
+          },
+        );
         if (!owned.mounted) return;
         const result = await connectSsh({
           target,
@@ -186,6 +190,11 @@ export function SshConnectionForm({
         // Registration owns this key now, even before the catalog atom catches up.
         const savedKeyRef = selectedKey.keyRef;
         owned.key = null;
+        const unusedBastionKey = useBastion ? null : owned.bastionKey;
+        owned.bastionKey = null;
+        if (unusedBastionKey !== null && unusedBastionKey.keyRef !== savedKeyRef) {
+          await cleanupUnusedSshKey(unusedBastionKey.keyRef);
+        }
         owned.targets.delete(sshTargetKey(target));
         await cleanupEarlierSshAttempts(owned.targets.values(), savedKeyRef);
         owned.targets.clear();
@@ -248,93 +257,88 @@ export function SshConnectionForm({
               onChangeText={setLabel}
               editable={!busy}
             />
-            {key === null ? (
-              <>
-                <Button
-                  label="Generate key"
-                  disabled={busy}
-                  fullWidth
-                  onPress={() => void chooseKey(() => sshNative!.generateKey("t3code-android"))}
+            <AppText>Target SSH key</AppText>
+            <SshKeyPicker
+              keyInfo={key}
+              busy={busy}
+              onChoose={(action) => chooseKey("target", action)}
+              onError={setError}
+            />
+            <Button
+              label={useBastion ? "Remove bastion" : "Use bastion"}
+              disabled={busy}
+              onPress={() => setUseBastion(!useBastion)}
+            />
+            {useBastion ? (
+              <View className="gap-4">
+                <AppText>Bastion</AppText>
+                <ConnectionFormField
+                  label="Bastion host"
+                  placeholder="user@bastion.example:22"
+                  value={bastionHost}
+                  onChangeText={setBastionHost}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!busy}
                 />
-                <Button
-                  label="Import key file"
-                  disabled={busy}
-                  fullWidth
-                  onPress={() => void chooseKey(importSshKeyFile)}
+                <ConnectionFormField
+                  label="Bastion username"
+                  value={bastionUsername}
+                  onChangeText={setBastionUsername}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!busy}
                 />
-                <Button
-                  label="Paste key"
-                  disabled={busy}
-                  fullWidth
-                  onPress={() => setPasteOpen((open) => !open)}
+                <ConnectionFormField
+                  label="Bastion port"
+                  value={bastionPort}
+                  onChangeText={setBastionPort}
+                  keyboardType="number-pad"
+                  editable={!busy}
                 />
-                {pasteOpen ? (
-                  <>
-                    <ConnectionFormField
-                      label="Private key"
-                      multiline
-                      numberOfLines={6}
-                      value={privateKey}
-                      onChangeText={setPrivateKey}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      editable={!busy}
-                    />
-                    <Button
-                      label="Import key"
-                      disabled={busy || !privateKey.trim()}
-                      fullWidth
-                      onPress={() =>
-                        void chooseKey(async () => {
-                          const text = privateKey;
-                          setPrivateKey("");
-                          if (new TextEncoder().encode(text).byteLength > MAX_KEY_BYTES) {
-                            throw new Error("Paste a private key no larger than 64 KiB.");
-                          }
-                          return sshNative!.importKey(text);
-                        })
-                      }
-                    />
-                  </>
-                ) : null}
-              </>
-            ) : (
-              <View className="gap-3">
                 <AppText>
-                  {key.publicKey?.split(" ")[0] ??
-                    (key.encrypted ? "Encrypted SSH key" : "SSH key imported")}
+                  The target host is reached from the bastion. For a reverse tunnel, use its
+                  assigned loopback address and port.
                 </AppText>
-                {key.publicKey !== null ? (
-                  <>
-                    <AppText selectable className="font-mono text-sm">
-                      {key.publicKey}
-                    </AppText>
-                    <Button
-                      label={copied ? "Copied" : "Copy public key"}
-                      fullWidth
-                      onPress={() => {
-                        void Clipboard.setStringAsync(key.publicKey!)
-                          .then(() => setCopied(true))
-                          .catch(() =>
-                            setError("Could not copy the public key. Select it to copy manually."),
-                          );
-                      }}
-                    />
-                    <AppText>Add this public key to ~/.ssh/authorized_keys on the server.</AppText>
-                  </>
-                ) : (
-                  <AppText>The public key is unavailable until this key is unlocked.</AppText>
-                )}
+                <AppText>Bastion SSH key</AppText>
+                <SshKeyPicker
+                  keyInfo={bastionKey}
+                  busy={busy}
+                  onChoose={(action) => chooseKey("bastion", action)}
+                  onError={setError}
+                />
+                {bastionKey === null && key !== null ? (
+                  <Button
+                    label="Use target key for bastion"
+                    disabled={busy}
+                    onPress={() => void chooseKey("bastion", async () => key)}
+                  />
+                ) : null}
               </View>
-            )}
+            ) : null}
             <AppText accessibilityLiveRegion="polite" className="text-danger-foreground">
               {error}
             </AppText>
+            {error ? (
+              <Button
+                label={diagnosticsCopied ? "Copied diagnostics" : "Copy diagnostics"}
+                fullWidth
+                onPress={() => {
+                  const diagnostics =
+                    attemptedTarget === null ? "" : sshDiagnosticsText(attemptedTarget);
+                  void Clipboard.setStringAsync(
+                    diagnostics || "SSH configuration failed before connecting.",
+                  )
+                    .then(() => setDiagnosticsCopied(true))
+                    .catch(() => setError("Could not copy diagnostics. Try again."));
+                }}
+              />
+            ) : null}
             <Button
               label="Connect"
               tone="primary"
               loading={busy}
-              disabled={key === null}
+              disabled={key === null || (useBastion && bastionKey === null)}
               fullWidth
               onPress={() => void submit()}
             />

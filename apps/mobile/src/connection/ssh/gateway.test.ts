@@ -3,11 +3,13 @@ import { RemoteEnvironmentAuthUndeclaredStatusError } from "@t3tools/client-runt
 import { EnvironmentAuthInvalidError, EnvironmentId } from "@t3tools/contracts";
 import { buildMobilePairingScript, REMOTE_RUNTIME_DISCOVERY_SCRIPT } from "@t3tools/ssh/scripts";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import { vi } from "vite-plus/test";
 
 vi.mock("expo", () => ({ requireOptionalNativeModule: () => null }));
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 
+import { sshDiagnosticsText } from "./diagnostics";
 import type { SshTargetCredentials } from "./credentials";
 import {
   makeMobileSshGateway,
@@ -128,6 +130,180 @@ function fixture() {
 }
 
 describe("mobile SSH gateway", () => {
+  it.effect("releases the outer session and pending native attempt on interruption", () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const routed = { ...target, bastion: { ...target, hostname: "jump.test" } };
+      yield* Effect.promise(() =>
+        f.deps.updateSshCredentials(routed, {
+          bastion: { keyRef: "key-A", hostKey: "pinned-A" },
+        }),
+      );
+      const started = deferred<void>();
+      const cancelled = deferred<void>();
+      f.transport.connect
+        .mockImplementationOnce(async () => {
+          f.sessions.add("outer");
+          return { sessionId: "outer", hostKey: "pinned-A" };
+        })
+        .mockImplementationOnce(async ({ attemptId }) => {
+          f.transport.cancel.mockImplementationOnce(async (id) => {
+            expect(id).toBe(attemptId);
+            cancelled.resolve();
+          });
+          started.resolve();
+          await cancelled.promise;
+          throw { code: "SSH_CANCELLED" };
+        });
+      const fiber = yield* Effect.forkChild(f.gateway.provision(routed));
+      yield* Effect.promise(() => started.promise);
+      yield* Fiber.interrupt(fiber);
+      expect(f.sessions.size).toBe(0);
+      expect(f.transport.close).toHaveBeenCalledExactlyOnceWith("outer");
+      expect(f.closedListeners.size).toBe(0);
+      expect(f.hostKeyListeners.size).toBe(0);
+    }),
+  );
+
+  it.effect("uses independent bastion and target trust, with exec only on the target", () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const routed = {
+        ...target,
+        hostname: "127.0.0.1",
+        port: 22002,
+        bastion: { alias: "jump", hostname: "jump.test", username: "access", port: null },
+      };
+      yield* Effect.promise(() =>
+        f.deps.updateSshCredentials(routed, {
+          hostKey: null,
+          bastion: { keyRef: "key-A", hostKey: null },
+        }),
+      );
+      yield* f.gateway.provision(routed);
+      expect(
+        f.transport.connect.mock.calls.map(([options]) => ({
+          host: options.hostname,
+          port: options.port,
+          keyRef: options.keyRef,
+          hostKey: options.hostKey,
+        })),
+      ).toEqual([
+        { host: "jump.test", port: 22, keyRef: "key-A", hostKey: null },
+        { host: "127.0.0.1", port: 41234, keyRef: "key-1", hostKey: null },
+      ]);
+      expect(f.transport.forward.mock.calls).toEqual([
+        ["session-1", "127.0.0.1", 22002],
+        ["session-2", "127.0.0.1", 3773],
+      ]);
+      expect(f.transport.exec.mock.calls.every(([id]) => id === "session-2")).toBe(true);
+      expect(f.credentials()).toMatchObject({
+        hostKey: "ssh-ed25519 accepted",
+        bastion: { keyRef: "key-A", hostKey: "ssh-ed25519 accepted" },
+      });
+      yield* f.gateway.disconnect(routed);
+      yield* f.gateway.disconnect(routed);
+      expect(f.transport.close.mock.calls).toEqual([["session-2"], ["session-1"]]);
+      expect(f.sessions.size).toBe(0);
+      expect(f.closedListeners.size).toBe(0);
+    }),
+  );
+
+  it.effect.each(["SSH_AUTH_FAILED", "SSH_HOST_KEY_CHANGED"] as const)(
+    "closes the bastion after target %s, without a direct retry",
+    (code) =>
+      Effect.gen(function* () {
+        const f = fixture();
+        const routed = { ...target, bastion: { ...target, hostname: "jump.test" } };
+        yield* Effect.promise(() =>
+          f.deps.updateSshCredentials(routed, {
+            bastion: { keyRef: "key-A", hostKey: "pinned-A" },
+          }),
+        );
+        f.transport.connect
+          .mockImplementationOnce(async () => {
+            f.sessions.add("outer");
+            return { sessionId: "outer", hostKey: "pinned-A" };
+          })
+          .mockRejectedValueOnce({
+            code,
+            message: "secret-key-A correct-passphrase cached-bearer",
+          });
+        const error = yield* Effect.flip(f.gateway.provision(routed));
+        expect(error).toMatchObject({ _tag: "ConnectionBlockedError", reason: "authentication" });
+        expect(error.detail).toContain("target SSH");
+        expect(f.transport.connect).toHaveBeenCalledTimes(2);
+        expect(f.transport.close).toHaveBeenCalledExactlyOnceWith("outer");
+        expect(f.sessions.size).toBe(0);
+        expect(f.closedListeners.size).toBe(0);
+        const text = sshDiagnosticsText(routed);
+        expect(text).toContain(code);
+        expect(text).toContain("target SSH: failed");
+        expect(text).not.toContain("secret-key-A");
+        expect(text).not.toContain("correct-passphrase");
+        expect(text).not.toContain("cached-bearer");
+      }),
+  );
+
+  it.effect.each(["session-1", "session-2"])(
+    "closes both sessions when %s disconnects and rebuilds the route",
+    (sessionId) =>
+      Effect.gen(function* () {
+        const f = fixture();
+        const routed = { ...target, bastion: { ...target, hostname: "jump.test" } };
+        yield* Effect.promise(() =>
+          f.deps.updateSshCredentials(routed, {
+            bastion: { keyRef: "key-A", hostKey: "pinned-A" },
+          }),
+        );
+        yield* f.gateway.provision(routed);
+        const closed = deferred<void>();
+        const originalClose = f.transport.close.getMockImplementation()!;
+        f.transport.close.mockImplementation(async (id) => {
+          await originalClose(id);
+          if (id === "session-1") closed.resolve();
+        });
+        f.closeRemotely(sessionId);
+        yield* Effect.promise(() => closed.promise);
+        expect(f.sessions.size).toBe(0);
+        expect(f.closedListeners.size).toBe(0);
+        yield* f.gateway.provision(routed);
+        expect(f.transport.connect).toHaveBeenCalledTimes(4);
+        expect(f.transport.connect.mock.calls[2]?.[0].hostname).toBe("jump.test");
+        yield* f.gateway.disconnect(routed);
+      }),
+  );
+
+  it.effect("cancels a pending inner SSH connection when the bastion closes", () =>
+    Effect.gen(function* () {
+      const f = fixture();
+      const routed = { ...target, bastion: { ...target, hostname: "jump.test" } };
+      yield* Effect.promise(() =>
+        f.deps.updateSshCredentials(routed, { bastion: { keyRef: "key-A", hostKey: "pinned-A" } }),
+      );
+      f.transport.connect
+        .mockImplementationOnce(async () => {
+          f.sessions.add("outer");
+          return { sessionId: "outer", hostKey: "pinned-A" };
+        })
+        .mockImplementationOnce(async ({ attemptId }) => {
+          const cancelled = deferred<void>();
+          f.transport.cancel.mockImplementationOnce(async (id) => {
+            expect(id).toBe(attemptId);
+            cancelled.resolve();
+          });
+          f.closeRemotely("outer");
+          await cancelled.promise;
+          throw { code: "SSH_CANCELLED" };
+        });
+      yield* Effect.flip(f.gateway.provision(routed));
+      expect(f.transport.cancel).toHaveBeenCalledTimes(1);
+      expect(f.sessions.size).toBe(0);
+      expect(f.closedListeners.size).toBe(0);
+      expect(f.hostKeyListeners.size).toBe(0);
+    }),
+  );
+
   it.effect("serializes parallel prepares and reuses one tunnel", () =>
     Effect.gen(function* () {
       const f = fixture();
@@ -208,6 +384,7 @@ describe("mobile SSH gateway", () => {
       expect(f.deps.requestHostKeyConfirmation).toHaveBeenCalledExactlyOnceWith({
         destination: "alice@example.test:22",
         fingerprint: "SHA256:test",
+        signal: expect.any(AbortSignal),
       });
       expect(f.credentials().hostKey).toBe("ssh-ed25519 accepted");
       expect(f.hostKeyListeners.size).toBe(0);
@@ -227,8 +404,8 @@ describe("mobile SSH gateway", () => {
       f.deps.requestPassphrase.mockResolvedValueOnce("wrong-passphrase");
       yield* f.gateway.prepare(prepareInput);
       expect(f.deps.requestPassphrase.mock.calls).toEqual([
-        [{ destination: "alice@example.test:22", retry: false }],
-        [{ destination: "alice@example.test:22", retry: true }],
+        [{ destination: "alice@example.test:22", retry: false, signal: expect.any(AbortSignal) }],
+        [{ destination: "alice@example.test:22", retry: true, signal: expect.any(AbortSignal) }],
       ]);
       expect(f.transport.connect.mock.calls.map(([options]) => options.passphrase)).toEqual([
         null,

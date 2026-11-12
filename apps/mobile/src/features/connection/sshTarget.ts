@@ -52,7 +52,12 @@ export function savedSshTargets(entries: Iterable<ConnectionCatalogEntry>) {
 
 export function isSshKeyReferenced(
   keyRef: string,
-  savedCredentials: ReadonlyArray<{ readonly keyRef: string } | null>,
+  savedCredentials: ReadonlyArray<{
+    readonly keyRef: string;
+    readonly bastion?: { readonly keyRef: string };
+  } | null>,
 ): boolean {
-  return savedCredentials.some((credentials) => credentials?.keyRef === keyRef);
+  return savedCredentials.some(
+    (credentials) => credentials?.keyRef === keyRef || credentials?.bastion?.keyRef === keyRef,
+  );
 }

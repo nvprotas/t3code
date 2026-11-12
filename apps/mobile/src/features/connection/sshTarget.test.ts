@@ -101,5 +101,8 @@ describe("SSH key references", () => {
     );
     expect(isSshKeyReferenced("removed", [null, { keyRef: "other" }])).toBe(false);
     expect(isSshKeyReferenced("removed", [])).toBe(false);
+    expect(
+      isSshKeyReferenced("shared", [{ keyRef: "target", bastion: { keyRef: "shared" } }]),
+    ).toBe(true);
   });
 });

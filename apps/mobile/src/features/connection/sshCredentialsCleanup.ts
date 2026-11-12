@@ -35,8 +35,10 @@ export async function cleanupSshCredentials(
     if (credentials !== null) {
       // A failed read leaves the key intact: another saved route may still need it.
       const savedCredentials = await Promise.all(remaining.map(readSshCredentials));
-      if (!isSshKeyReferenced(credentials.keyRef, savedCredentials)) {
-        await sshNative?.deleteKey(credentials.keyRef).catch(() => undefined);
+      for (const keyRef of new Set([credentials.keyRef, credentials.bastion?.keyRef])) {
+        if (keyRef !== undefined && !isSshKeyReferenced(keyRef, savedCredentials)) {
+          await sshNative?.deleteKey(keyRef).catch(() => undefined);
+        }
       }
     }
     await deleteSshCredentials(target);

@@ -32,9 +32,15 @@ function publish(next: ReadonlyArray<SshPrompt>) {
   for (const listener of listeners) listener();
 }
 
-function ask(prompt: SshPrompt): Promise<Answer> {
+function ask(prompt: SshPrompt, signal?: AbortSignal): Promise<Answer> {
+  if (signal?.aborted) return Promise.resolve({ accept: false });
   return new Promise((resolve) => {
-    resolvers.set(prompt.id, resolve);
+    const cancel = () => dismissSshPrompt(prompt.id);
+    resolvers.set(prompt.id, (answer) => {
+      signal?.removeEventListener("abort", cancel);
+      resolve(answer);
+    });
+    signal?.addEventListener("abort", cancel, { once: true });
     publish([...queue, prompt]);
   });
 }
@@ -43,9 +49,11 @@ function ask(prompt: SshPrompt): Promise<Answer> {
 export async function requestHostKeyConfirmation(input: {
   readonly destination: string;
   readonly fingerprint: string;
+  readonly signal?: AbortSignal;
 }): Promise<boolean> {
   sequence += 1;
-  const answer = await ask({ id: `ssh-prompt-${sequence}`, kind: "host-key", ...input });
+  const { signal, ...prompt } = input;
+  const answer = await ask({ id: `ssh-prompt-${sequence}`, kind: "host-key", ...prompt }, signal);
   return answer.accept;
 }
 
@@ -53,9 +61,11 @@ export async function requestHostKeyConfirmation(input: {
 export async function requestPassphrase(input: {
   readonly destination: string;
   readonly retry: boolean;
+  readonly signal?: AbortSignal;
 }): Promise<string | null> {
   sequence += 1;
-  const answer = await ask({ id: `ssh-prompt-${sequence}`, kind: "passphrase", ...input });
+  const { signal, ...prompt } = input;
+  const answer = await ask({ id: `ssh-prompt-${sequence}`, kind: "passphrase", ...prompt }, signal);
   return answer.accept ? (answer.passphrase ?? "") : null;
 }
 

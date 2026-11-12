@@ -12,6 +12,10 @@ export interface SshTargetCredentials {
   readonly hostKey: string | null;
   /** Cached bearer token so reconnects do not pair a new session every time. */
   readonly bearerToken: string | null;
+  readonly bastion?: {
+    readonly keyRef: string;
+    readonly hostKey: string | null;
+  };
 }
 
 // SecureStore keys allow only [A-Za-z0-9._-].
@@ -32,10 +36,31 @@ export async function readSshCredentials(
   if (typeof parsed !== "object" || parsed === null) return null;
   const record = parsed as Record<string, unknown>;
   if (typeof record.keyRef !== "string") return null;
+  const bastion = record.bastion;
+  if (
+    target.bastion !== undefined &&
+    (typeof bastion !== "object" ||
+      bastion === null ||
+      !("keyRef" in bastion) ||
+      typeof bastion.keyRef !== "string")
+  )
+    return null;
   return {
     keyRef: record.keyRef,
     hostKey: typeof record.hostKey === "string" ? record.hostKey : null,
     bearerToken: typeof record.bearerToken === "string" ? record.bearerToken : null,
+    ...(typeof bastion === "object" &&
+    bastion !== null &&
+    "keyRef" in bastion &&
+    typeof bastion.keyRef === "string"
+      ? {
+          bastion: {
+            keyRef: bastion.keyRef,
+            hostKey:
+              "hostKey" in bastion && typeof bastion.hostKey === "string" ? bastion.hostKey : null,
+          },
+        }
+      : {}),
   };
 }
 

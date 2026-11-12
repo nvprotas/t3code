@@ -201,7 +201,7 @@ export function connectionRouteLabel(route: ConnectionRoute): string {
     case "ssh": {
       const profile = Option.getOrNull(route.profile);
       return profile?._tag === "SshConnectionProfile"
-        ? `SSH ${profile.target.username ? `${profile.target.username}@` : ""}${profile.target.hostname}`
+        ? `SSH ${profile.target.username ? `${profile.target.username}@` : ""}${profile.target.hostname}${profile.target.bastion ? ` via ${profile.target.bastion.hostname}` : ""}`
         : "SSH";
     }
     case "public":
@@ -474,5 +474,9 @@ export function removedWithRelay(entry: ConnectionCatalogEntry): boolean {
 }
 
 export function sshTargetKey(target: DesktopSshEnvironmentTarget): string {
-  return JSON.stringify([target.alias, target.hostname, target.username, target.port]);
+  const parts: unknown[] = [target.alias, target.hostname, target.username, target.port];
+  if (target.bastion !== undefined) {
+    parts.push([target.bastion.hostname, target.bastion.username, target.bastion.port ?? 22]);
+  }
+  return JSON.stringify(parts);
 }
