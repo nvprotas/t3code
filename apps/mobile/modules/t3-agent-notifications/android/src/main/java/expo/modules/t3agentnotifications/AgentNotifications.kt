@@ -219,6 +219,31 @@ object AgentNotifications {
     showActivity(context, scheme, data, data["active"] == "true", RUNNING_LIFETIME_MS)
   }
 
+  @Synchronized
+  fun showLocalActivity(context: Context, scheme: String, data: Map<String, String>?) {
+    val prefs = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
+    if (data == null || !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+      cancelActivity(context)
+      prefs.edit().remove("localIdentity").apply()
+      return
+    }
+    val identity = data["activity_identity"] ?: return
+    if (prefs.getString("localIdentity", null) != identity) {
+      prefs.edit().putString("localIdentity", identity).putBoolean("dismissed", false).apply()
+    }
+    if (prefs.getBoolean("dismissed", false)) return
+    val remainingMs = data["activity_expires_at"]?.toLongOrNull()?.let {
+      (it - System.currentTimeMillis()).coerceAtMost(MAX_LIFETIME_MS)
+    } ?: RUNNING_LIFETIME_MS
+    if (remainingMs <= 0) {
+      cancelActivity(context)
+      return
+    }
+    channels(context)
+    // A completed local run keeps its Done chip only until the payload's short expiry.
+    showActivity(context, scheme, data, active = true, remainingMs = remainingMs)
+  }
+
   private fun updateActivity(
     context: Context,
     prefs: SharedPreferences,

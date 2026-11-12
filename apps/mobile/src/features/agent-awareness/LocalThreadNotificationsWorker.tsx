@@ -1,92 +1,82 @@
 import { useAtomValue } from "@effect/atom-react";
-import { enabledEnvironmentIds } from "@t3tools/client-runtime/state/connections";
-import {
-  type PendingSubagentRequest,
-  presentThreadShell,
-} from "@t3tools/client-runtime/state/models";
-import { environmentThreadShells } from "../../state/threads";
-import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
-import * as Option from "effect/Option";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { AsyncResult } from "effect/reactivity";
 import * as Notifications from "expo-notifications";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 
-import { environmentCatalog } from "../../connection/catalog";
-import { environmentShell } from "../../state/shell";
+import { useThreadShells } from "../../state/entities";
+import { useWorkspaceEnvironments } from "../../state/workspace";
 import { mobilePreferencesAtom } from "../../state/preferences";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
+import { LocalAgentActivityWorker } from "./LocalAgentActivityWorker";
 import {
   evaluateThreadNotification,
   type ThreadNotificationMark,
 } from "./localThreadNotifications";
 
-/**
- * Posts thread notifications from the live connection for builds without
- * T3 Connect, where the relay cannot push. Works only while the app process
- * keeps its connection; taps route through installAgentNotificationNavigation.
- */
 export function LocalThreadNotificationsWorker() {
   const enabled = useAtomValue(
     mobilePreferencesAtom,
     (result) =>
       AsyncResult.isSuccess(result) && result.value.localThreadNotificationsEnabled === true,
   );
-  const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
-  const environmentIds = useMemo(() => [...enabledEnvironmentIds(catalog)], [catalog]);
-
-  if (!enabled || hasCloudPublicConfig()) return null;
-  return environmentIds.map((environmentId) => (
-    <EnvironmentLocalNotifications key={environmentId} environmentId={environmentId} />
-  ));
+  return enabled && !hasCloudPublicConfig() ? <EnabledLocalNotifications /> : null;
 }
 
 interface ThreadEntry {
-  readonly raw: OrchestrationV2ThreadShell;
-  readonly subagentRequest: PendingSubagentRequest | null;
+  readonly raw: EnvironmentThreadShell["source"];
+  readonly subagentRequest: EnvironmentThreadShell["pendingSubagentRequest"];
   readonly mark: ThreadNotificationMark;
 }
 
-function EnvironmentLocalNotifications({ environmentId }: { environmentId: EnvironmentId }) {
-  const shell = useAtomValue(environmentShell.stateValueAtom(environmentId));
-  const threads =
-    shell.status === "live" && Option.isSome(shell.snapshot) ? shell.snapshot.value.threads : null;
-  const subagentRequests = useAtomValue(
-    environmentThreadShells.pendingSubagentRequestsAtom(environmentId),
-  );
-  const previous = useRef(new Map<ThreadId, ThreadEntry>());
+function EnabledLocalNotifications() {
+  const threads = useThreadShells();
+  const environments = useWorkspaceEnvironments();
+  const previous = useRef(new Map<string, ThreadEntry>());
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Posts native OS notifications when live thread state changes.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Deliver OS notifications for state transitions from connected environments.
   useEffect(() => {
-    if (threads === null) {
-      previous.current.clear();
-      return;
-    }
-    const next = new Map<ThreadId, ThreadEntry>();
-    // Subagents are skipped, so their requests notify through the thread above them.
-    for (const raw of threads) {
-      if (raw.lineage.relationshipToParent === "subagent") continue;
-      const prior = previous.current.get(raw.id);
-      const subagentRequest = subagentRequests.get(raw.id) ?? null;
-      if (prior?.raw === raw && prior.subagentRequest === subagentRequest) {
-        next.set(raw.id, prior);
+    const live = new Set(
+      environments
+        .filter(
+          (environment) => environment.isEnabled && environment.connectionState === "connected",
+        )
+        .map((environment) => environment.environmentId),
+    );
+    const next = new Map<string, ThreadEntry>();
+    for (const thread of threads) {
+      if (
+        !live.has(thread.environmentId) ||
+        thread.lineage.relationshipToParent === "subagent" ||
+        thread.lineage.sideChat === true
+      ) {
         continue;
       }
-      const thread = presentThreadShell(environmentId, raw, subagentRequest);
+      const key = JSON.stringify([thread.environmentId, thread.id]);
+      const prior = previous.current.get(key);
+      const subagentRequest = thread.pendingSubagentRequest;
+      if (prior?.raw === thread.source && prior.subagentRequest === subagentRequest) {
+        next.set(key, prior);
+        continue;
+      }
       const { mark, title } = evaluateThreadNotification(thread, prior?.mark);
-      next.set(raw.id, { raw, subagentRequest, mark });
+      next.set(key, { raw: thread.source, subagentRequest, mark });
       if (title === null) continue;
-      // One notification per thread: a newer state replaces the older one.
       void Notifications.scheduleNotificationAsync({
-        identifier: `${environmentId}:${thread.id}`,
-        content: { title, body: thread.title, data: { environmentId, threadId: thread.id } },
+        identifier: `${thread.environmentId}:${thread.id}`,
+        content: {
+          title,
+          body: thread.title,
+          data: { environmentId: thread.environmentId, threadId: thread.id },
+        },
         trigger: Platform.OS === "android" ? { channelId: "agent-alerts" } : null,
       }).catch((cause: unknown) => {
         console.warn("Failed to post local thread notification", cause);
       });
     }
     previous.current = next;
-  }, [environmentId, threads, subagentRequests]);
+  }, [environments, threads]);
 
-  return null;
+  return Platform.OS === "android" ? <LocalAgentActivityWorker /> : null;
 }

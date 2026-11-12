@@ -5,10 +5,18 @@ import "./src/features/development/behavior-probe-entry";
 import "./src/features/observability/observe";
 import { registerRootComponent } from "expo";
 import "react-native-gesture-handler";
-import { LogBox } from "react-native";
+import { AppRegistry, LogBox } from "react-native";
 import { featureFlags } from "react-native-screens";
 
 import App from "./src/App";
+import { sshNative } from "./src/connection/ssh/native";
+
+AppRegistry.registerHeadlessTask(
+  "T3SshConnection",
+  () =>
+    ({ leaseId }: { leaseId: string }) =>
+      sshNative?.waitForBackgroundSession(leaseId) ?? Promise.resolve(),
+);
 
 // Enables iOS FormSheet sizing for nested native stacks in non-fitToContents sheets.
 featureFlags.experiment.synchronousScreenUpdatesEnabled = true;

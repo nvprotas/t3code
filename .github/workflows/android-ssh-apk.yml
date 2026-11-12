@@ -16,6 +16,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changed:
+    name: Check changed files
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 64
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Fetch comparison base
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-ci-deps
+
+      - name: Check changed files
+        run: vp run check:changed origin/main --concurrency 1
+
   apk:
     name: Check and build APK
     runs-on: ubuntu-latest
@@ -76,7 +99,18 @@ jobs:
       - name: Test mobile SSH and local notifications
         if: ${{ !cancelled() }}
         working-directory: apps/mobile
-        run: vp test run --config ../../vite.config.ts src/connection/ssh src/features/connection src/features/agent-awareness/localThreadNotifications.test.ts
+        run: |
+          set -o pipefail
+          vp test run --config vite.config.ts src/connection/ssh src/features/connection src/features/agent-awareness/localThreadNotifications.test.ts 2>&1 | tee "$RUNNER_TEMP/mobile-ssh-tests.log"
+
+      - name: Upload mobile test diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-mobile-ssh-test-log
+          path: ${{ runner.temp }}/mobile-ssh-tests.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Lint
         if: ${{ !cancelled() }}
@@ -87,7 +121,9 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: |
+            21
+            17
 
       # setup-gradle writes its cache only on the default branch unless told
       # otherwise, so every android-ssh build started from an empty Gradle home.
@@ -106,6 +142,30 @@ jobs:
           key: android-ssh-apk
           max-size: 2G
 
+      - name: Generate Android project
+        if: ${{ !cancelled() }}
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --clean --platform android --no-install
+
+      - name: SSH and agent notification unit tests
+        if: ${{ !cancelled() }}
+        working-directory: apps/mobile/android
+        run: |
+          set -o pipefail
+          ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64 --max-workers=4 2>&1 | tee "$RUNNER_TEMP/native-ssh-tests.log"
+
+      - name: Upload SSH test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh-tests
+          path: |
+            ${{ runner.temp }}/native-ssh-tests.log
+            apps/mobile/modules/t3-ssh/android/build/reports/tests/testDebugUnitTest/
+            apps/mobile/modules/t3-agent-notifications/android/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build release APK
         if: ${{ !cancelled() }}
         working-directory: apps/mobile
@@ -115,7 +175,6 @@ jobs:
           CCACHE_BASEDIR: ${{ github.workspace }}
           CCACHE_NOHASHDIR: "true"
         run: |
-          pnpm exec expo prebuild --clean --platform android --no-install
           cd android
           ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=4 --build-cache
           ccache --show-stats
@@ -186,8 +245,3 @@ jobs:
           path: apps/mobile/android/app/build/generated/sourcemaps/react/release/index.android.bundle.map
           if-no-files-found: warn
           retention-days: 14
-
-      - name: SSH module unit tests
-        if: ${{ !cancelled() }}
-        working-directory: apps/mobile/android
-        run: ./gradlew :t3-ssh:testDebugUnitTest --max-workers=4

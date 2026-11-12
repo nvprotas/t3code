@@ -124,6 +124,9 @@ function LocalSettingsNotificationsRouteScreen() {
   const enabled =
     AsyncResult.isSuccess(preferencesResult) &&
     preferencesResult.value.localThreadNotificationsEnabled === true;
+  const liveUpdatesEnabled =
+    AsyncResult.isSuccess(preferencesResult) &&
+    preferencesResult.value.liveActivitiesEnabled !== false;
 
   const handleChange = useCallback(
     async (next: boolean) => {
@@ -185,6 +188,30 @@ function LocalSettingsNotificationsRouteScreen() {
             value={enabled}
             onValueChange={(next) => void handleChange(next)}
           />
+          {Platform.OS === "android" ? (
+            <SettingsSwitchRow
+              icon="bolt.circle"
+              label="Agent Live Updates"
+              subtitle="Show Working, requests for input, and completed runs beside the clock."
+              disabled={!enabled}
+              value={enabled && liveUpdatesEnabled}
+              onValueChange={(next) => savePreferences({ liveActivitiesEnabled: next })}
+            />
+          ) : null}
+          {supportsAndroidLiveUpdateSettings() ? (
+            <SettingsRow
+              icon="gearshape"
+              label="Android Live Update settings"
+              onPress={() => {
+                void openAndroidLiveUpdateSettings().catch(() => {
+                  Dialog.alert(
+                    "Couldn't open Settings",
+                    "Open Android Settings, select T3 Code, then enable Live Updates in Notifications.",
+                  );
+                });
+              }}
+            />
+          ) : null}
         </SettingsSection>
       </ScrollView>
     </SettingsScreen>

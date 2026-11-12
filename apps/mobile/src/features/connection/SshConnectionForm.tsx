@@ -42,6 +42,47 @@ function sshErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Could not connect over SSH. Try again.";
 }
 
+async function importSshKeyFile() {
+  const native = sshNative;
+  if (native === null) return null;
+  const result = await DocumentPicker.getDocumentAsync({
+    copyToCacheDirectory: true,
+    multiple: false,
+  });
+  if (result.canceled) return null;
+  const file = new File(result.assets[0]!.uri);
+  let text: string;
+  try {
+    if (file.size > MAX_KEY_BYTES) {
+      throw new Error("Choose a private key file no larger than 64 KiB.");
+    }
+    text = await file.text();
+    if (new TextEncoder().encode(text).byteLength > MAX_KEY_BYTES) {
+      throw new Error("Choose a private key file no larger than 64 KiB.");
+    }
+  } finally {
+    file.delete();
+  }
+  return native.importKey(text);
+}
+
+async function cleanupEarlierSshAttempts(
+  targets: Iterable<DesktopSshEnvironmentTarget>,
+  savedKeyRef: string,
+) {
+  for (const attempted of targets) {
+    try {
+      if (currentSshTargets().some((saved) => sshTargetKey(saved) === sshTargetKey(attempted))) {
+        continue;
+      }
+      const credentials = await readSshCredentials(attempted);
+      if (credentials?.keyRef === savedKeyRef) await deleteSshCredentials(attempted);
+    } catch {
+      // Failure to clean an earlier attempt must not undo registration.
+    }
+  }
+}
+
 export function SshConnectionForm({
   expectedEnvironmentId,
 }: {
@@ -66,20 +107,19 @@ export function SshConnectionForm({
     targets: new Map<string, DesktopSshEnvironmentTarget>(),
   });
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Releases imported native SSH credentials after the form unmounts and its operation finishes.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Release temporary native SSH keys and credentials when their form unmounts.
   useEffect(() => {
     const owned = resources.current;
     owned.mounted = true;
+    async function cleanup() {
+      for (const target of owned.targets.values()) await cleanupSshCredentials(target);
+      if (owned.key !== null) await cleanupUnusedSshKey(owned.key.keyRef);
+    }
     return () => {
       owned.mounted = false;
       // An in-flight operation releases its resources when it settles.
       if (!owned.busy) void cleanup();
     };
-
-    async function cleanup() {
-      for (const target of owned.targets.values()) await cleanupSshCredentials(target);
-      if (owned.key !== null) await cleanupUnusedSshKey(owned.key.keyRef);
-    }
   }, []);
 
   const finishOperation = async () => {
@@ -99,98 +139,65 @@ export function SshConnectionForm({
     owned.busy = true;
     setBusy(true);
     setError(null);
-    try {
-      const next = await action();
-      if (next !== null) {
-        owned.key = next;
-        if (owned.mounted) {
-          setKey(next);
-          setPrivateKey("");
-          setPasteOpen(false);
+    await Promise.resolve()
+      .then(action)
+      .then((next) => {
+        if (next !== null) {
+          owned.key = next;
+          if (owned.mounted) {
+            setKey(next);
+            setPrivateKey("");
+            setPasteOpen(false);
+          }
         }
-      }
-    } catch (cause) {
-      if (owned.mounted) setError(sshErrorMessage(cause));
-    } finally {
-      await finishOperation();
-    }
-  };
-
-  const importFile = async () => {
-    const native = sshNative;
-    if (native === null) return null;
-    const result = await DocumentPicker.getDocumentAsync({
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-    if (result.canceled) return null;
-    const file = new File(result.assets[0]!.uri);
-    let text: string;
-    try {
-      if (file.size > MAX_KEY_BYTES) {
-        throw new Error("Choose a private key file no larger than 64 KiB.");
-      }
-      text = await file.text();
-      if (new TextEncoder().encode(text).byteLength > MAX_KEY_BYTES) {
-        throw new Error("Choose a private key file no larger than 64 KiB.");
-      }
-    } finally {
-      file.delete();
-    }
-    return native.importKey(text);
+      })
+      .catch((cause: unknown) => {
+        if (owned.mounted) setError(sshErrorMessage(cause));
+      })
+      .finally(finishOperation);
   };
 
   const submit = async () => {
     const owned = resources.current;
-    if (owned.busy || owned.key === null) return;
+    const selectedKey = owned.key;
+    if (owned.busy || selectedKey === null) return;
     owned.busy = true;
     setBusy(true);
     setError(null);
-    try {
-      const target = parseSshTarget({ host, username, port });
-      if (currentSshTargets().some((saved) => sshTargetKey(saved) === sshTargetKey(target))) {
-        throw new Error("This SSH destination is already saved. Reconnect it from Environments.");
-      }
-      owned.targets.set(sshTargetKey(target), target);
-      await writeSshCredentials(target, {
-        keyRef: owned.key.keyRef,
-        hostKey: null,
-        bearerToken: null,
-      });
-      if (!owned.mounted) return;
-      const result = await connectSsh({
-        target,
-        ...(label.trim() ? { label: label.trim() } : {}),
-        ...(expectedEnvironmentId === undefined ? {} : { expectedEnvironmentId }),
-      });
-      if (AsyncResult.isFailure(result)) throw Cause.squash(result.cause);
-      // Registration owns this key now, even before the catalog atom catches up.
-      const savedKeyRef = owned.key.keyRef;
-      owned.key = null;
-      owned.targets.delete(sshTargetKey(target));
-      for (const attempted of owned.targets.values()) {
-        try {
-          if (
-            currentSshTargets().some((saved) => sshTargetKey(saved) === sshTargetKey(attempted))
-          ) {
-            continue;
-          }
-          const credentials = await readSshCredentials(attempted);
-          if (credentials?.keyRef === savedKeyRef) await deleteSshCredentials(attempted);
-        } catch {
-          // Failure to clean an earlier attempt must not undo registration.
+    await Promise.resolve()
+      .then(async () => {
+        const target = parseSshTarget({ host, username, port });
+        if (currentSshTargets().some((saved) => sshTargetKey(saved) === sshTargetKey(target))) {
+          throw new Error("This SSH destination is already saved. Reconnect it from Environments.");
         }
-      }
-      owned.targets.clear();
-      if (owned.mounted) {
-        if (navigation.canGoBack()) navigation.goBack();
-        else navigation.dispatch(StackActions.replace("Home"));
-      }
-    } catch (cause) {
-      if (owned.mounted) setError(sshErrorMessage(cause));
-    } finally {
-      await finishOperation();
-    }
+        owned.targets.set(sshTargetKey(target), target);
+        await writeSshCredentials(target, {
+          keyRef: selectedKey.keyRef,
+          hostKey: null,
+          bearerToken: null,
+        });
+        if (!owned.mounted) return;
+        const result = await connectSsh({
+          target,
+          ...(label.trim() ? { label: label.trim() } : {}),
+          ...(expectedEnvironmentId === undefined ? {} : { expectedEnvironmentId }),
+        });
+        if (AsyncResult.isFailure(result)) throw Cause.squash(result.cause);
+        // Registration owns this key now, even before the catalog atom catches up.
+        const savedKeyRef = selectedKey.keyRef;
+        owned.key = null;
+        owned.targets.delete(sshTargetKey(target));
+        await cleanupEarlierSshAttempts(owned.targets.values(), savedKeyRef);
+        owned.targets.clear();
+        if (owned.mounted) {
+          if (navigation.canGoBack()) navigation.goBack();
+          else navigation.dispatch(StackActions.replace("Home"));
+        }
+      })
+      .catch((cause: unknown) => {
+        if (owned.mounted) setError(sshErrorMessage(cause));
+      })
+      .finally(finishOperation);
   };
 
   return (
@@ -253,7 +260,7 @@ export function SshConnectionForm({
                   label="Import key file"
                   disabled={busy}
                   fullWidth
-                  onPress={() => void chooseKey(importFile)}
+                  onPress={() => void chooseKey(importSshKeyFile)}
                 />
                 <Button
                   label="Paste key"

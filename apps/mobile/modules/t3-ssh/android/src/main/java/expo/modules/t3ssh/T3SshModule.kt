@@ -4,6 +4,10 @@ import android.content.Context
 import android.util.Log
 import android.net.ConnectivityManager
 import android.net.Network
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.ReactContext
+import com.facebook.react.jstasks.HeadlessJsTaskConfig
+import com.facebook.react.jstasks.HeadlessJsTaskContext
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
@@ -74,6 +78,7 @@ class T3SshModule : Module() {
     var network: Network? = null
     var networkCallback: ConnectivityManager.NetworkCallback? = null
     var connectivity: ConnectivityManager? = null
+    var backgroundLease: SshConnectionService.Lease? = null
     val forwardLock = Any()
   }
 
@@ -124,6 +129,18 @@ class T3SshModule : Module() {
           }
         }
         registered = connection
+        synchronized(lock) {
+          val context = requireNotNull(appContext.reactContext as? ReactContext)
+          connection.backgroundLease = SshConnectionService.retain(context, { id ->
+            // RN otherwise pauses the RPC heartbeat timers when the activity is backgrounded.
+            HeadlessJsTaskContext.getInstance(context).startTask(HeadlessJsTaskConfig(
+              "T3SshConnection",
+              Arguments.createMap().apply { putString("leaseId", id) },
+              0,
+              true,
+            ))
+          }) { stop(connection, sshError("SSH_SESSION_CLOSED", "SSH background service stopped")) }
+        }
         parsed.passphrase = null
         workers.execute { connect(connection, parsed) }
       } catch (_: Exception) {
@@ -158,6 +175,9 @@ class T3SshModule : Module() {
     }
     Function("isOpen") { sessionId: String ->
       synchronized(lock) { sessions[sessionId]?.let { !it.closed && it.client.isConnected && it.client.isAuthenticated } == true }
+    }
+    AsyncFunction("waitForBackgroundSession") { leaseId: String, promise: Promise ->
+      SshConnectionService.waitUntilClosed(leaseId).thenRun { promise.resolve(null) }
     }
     AsyncFunction("close") { sessionId: String, promise: Promise ->
       async(promise, "SSH_SESSION_CLOSED", "Unable to close SSH session") {
@@ -384,6 +404,8 @@ class T3SshModule : Module() {
       connection.trust.complete(false)
       attempts.remove(connection.attemptId, connection)
       sessions.remove(connection.sessionId)
+      connection.backgroundLease?.close()
+      connection.backgroundLease = null
       runCatching { connection.socket?.close() }
       val forward = connection.forward
       connection.forward = null

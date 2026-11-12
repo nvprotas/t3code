@@ -2,8 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   evaluateThreadNotification,
+  localAndroidAgentActivity,
   type ThreadNotificationMark,
 } from "./localThreadNotifications";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 
 type Input = Parameters<typeof evaluateThreadNotification>[0];
 
@@ -97,5 +99,79 @@ describe("evaluateThreadNotification", () => {
 
   it("stays quiet for archived threads", () => {
     expect(evaluateThreadNotification(thread({ archived: true }), mark()).title).toBeNull();
+  });
+});
+
+describe("localAndroidAgentActivity", () => {
+  const environmentId = EnvironmentId.make("ssh-server");
+  const otherEnvironmentId = EnvironmentId.make("other-server");
+  const projectId = ProjectId.make("project");
+  const live = new Set([environmentId]);
+  const now = Date.parse("2026-10-18T10:00:30.000Z");
+  const activityThread = (input: Parameters<typeof thread>[0] = {}, id = "thread") => ({
+    ...thread(input),
+    environmentId,
+    projectId,
+    id: ThreadId.make(id),
+    title: id,
+    updatedAt: "2026-10-18T10:00:00.000Z",
+    settledOverride: null,
+    lineage: { rootThreadId: ThreadId.make(id), parentThreadId: null, relationshipToParent: null },
+  });
+
+  it("prioritizes an agent needing input over running work and ignores offline agents", () => {
+    const working = activityThread({ runtime: "running", run: "running" }, "working");
+    const input = activityThread({ userInput: true }, "question");
+    const offline = { ...activityThread({ approval: true }), environmentId: otherEnvironmentId };
+    const result = localAndroidAgentActivity([working, input, offline], [], live, now);
+    expect(result).toMatchObject({
+      activity_phase: "waiting_for_input",
+      activity_active_count: "2",
+      activity_attention_count: "1",
+      activity_path: "/threads/ssh-server/question",
+      activity_line_0: "Input\tquestion\tNo project",
+    });
+    expect(localAndroidAgentActivity([working], [], new Set(), now)).toBeNull();
+    expect(
+      localAndroidAgentActivity(
+        [working, { ...input, pendingSubagentRequest: "approval" }],
+        [],
+        live,
+        now,
+      )?.activity_phase,
+    ).toBe("waiting_for_approval");
+  });
+
+  it("shows a completion briefly without replaying archived settled or historical results", () => {
+    const completed = activityThread();
+    expect(localAndroidAgentActivity([completed], [], live, now)).toMatchObject({
+      activity_phase: "completed",
+      activity_expires_at: String(Date.parse("2026-10-18T10:01:00.000Z")),
+    });
+    expect(localAndroidAgentActivity([completed], [], live, now + 60_000)).toBeNull();
+    expect(
+      localAndroidAgentActivity([{ ...completed, archivedAt: completed.updatedAt }], [], live, now),
+    ).toBeNull();
+    expect(
+      localAndroidAgentActivity([{ ...completed, settledOverride: "settled" }], [], live, now),
+    ).toBeNull();
+    expect(
+      localAndroidAgentActivity([activityThread({ runtime: "idle" })], [], live, now),
+    ).toMatchObject({ activity_phase: "stale" });
+  });
+
+  it("keeps activity identity across status changes and escapes thread links and row separators", () => {
+    const working = activityThread({ runtime: "running", run: "running" }, "thread:one/two");
+    const first = localAndroidAgentActivity([working], [], live, now);
+    const completed = { ...working, ...thread({}), title: "title\twith\nseparators" };
+    const result = localAndroidAgentActivity(
+      [completed],
+      [{ environmentId, id: projectId, title: "project\nname" }],
+      live,
+      now,
+    );
+    expect(result?.activity_identity).toBe(first?.activity_identity);
+    expect(result?.activity_path).toBe("/threads/ssh-server/thread%3Aone%2Ftwo");
+    expect(result?.activity_line_0).toBe("Done\ttitle with separators\tproject name");
   });
 });

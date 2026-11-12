@@ -42,8 +42,8 @@ import {
   RenderFailureView,
   type RenderFailureProps,
 } from "./components/RenderErrorBoundary";
-import { ArchivedThreadsRouteScreen } from "./features/archive/ArchivedThreadsRouteScreen";
 import { LocalThreadNotificationsWorker } from "./features/agent-awareness/LocalThreadNotificationsWorker";
+import { ArchivedThreadsRouteScreen } from "./features/archive/ArchivedThreadsRouteScreen";
 import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
 import { AttachmentFileScreen } from "./features/files/AttachmentFileScreen";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
@@ -414,8 +414,8 @@ function RootStackLayout(props: {
       routeDraftId={routeDraftId}
     >
       <HardwareKeyboardCommandProvider pathname={pathname}>
-        <ShowcaseReadyMarker />
         <LocalThreadNotificationsWorker />
+        <ShowcaseReadyMarker />
         <SettingsEnvironmentFilterProvider open={settingsOpen}>
           <WorkspaceConnectionStatusProvider>
             <AndroidWorkspaceTabsProvider state={props.state}>

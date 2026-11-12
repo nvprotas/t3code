@@ -164,7 +164,15 @@ function LocalSettingsRouteScreen() {
   const { savedConnectionsById } = useSavedRemoteConnections();
   return (
     <SettingsList
-      connections={[environmentsRow(gt("Environments"), Object.keys(savedConnectionsById).length)]}
+      connections={[
+        environmentsRow(gt("Environments"), Object.keys(savedConnectionsById).length),
+        {
+          id: "SettingsNotifications",
+          icon: "bell.badge",
+          label: gt("Notifications"),
+          target: "SettingsNotifications",
+        },
+      ]}
     />
   );
 }
