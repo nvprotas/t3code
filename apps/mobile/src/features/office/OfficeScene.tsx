@@ -13,8 +13,13 @@ const FRAME_INTERVAL_MS = 1000 / 24;
 const ItemView = memo(function ItemView(props: { readonly polys: Item["polys"] }) {
   return (
     <G>
-      {props.polys.map((poly, index) => (
-        <Polygon key={index} points={poly.points} fill={poly.fill} fillOpacity={poly.opacity} />
+      {props.polys.map((poly) => (
+        <Polygon
+          key={`${poly.points}|${poly.fill}`}
+          points={poly.points}
+          fill={poly.fill}
+          fillOpacity={poly.opacity}
+        />
       ))}
     </G>
   );
