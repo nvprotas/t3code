@@ -29,11 +29,7 @@ export function isSharedSlotTab(value: unknown): value is SharedSlotTab {
  * opened last, or else issues; this returns the other, which the bar leaves out.
  */
 export function sharedSlotAbsentee(selected: NavigationTab, last: unknown): SharedSlotTab {
-  const holder = isSharedSlotTab(selected)
-    ? selected
-    : last === "pullRequests"
-      ? last
-      : "issues";
+  const holder = isSharedSlotTab(selected) ? selected : last === "pullRequests" ? last : "issues";
   return holder === "issues" ? "pullRequests" : "issues";
 }
 

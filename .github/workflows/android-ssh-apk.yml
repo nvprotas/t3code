@@ -167,6 +167,7 @@ jobs:
           fi
 
       # One Gradle invocation so the daemon starts and the project configures once.
+      # Release lint (lintVital) only guards Play uploads, which this preview APK never is.
       # Gradle installs the NDK fresh on every runner, so ccache must hash the
       # compiler's content; its default mtime check missed nearly every object.
       - name: Build release APK
@@ -188,11 +189,20 @@ jobs:
           fi
           # A failed test still fails the step, after the APK is copied for device testing.
           status=0
-          ./gradlew $tasks -PreactNativeArchitectures=arm64-v8a -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64 --max-workers=4 --build-cache 2>&1 | tee "$RUNNER_TEMP/gradle-build.log" || status=$?
+          ./gradlew $tasks -PreactNativeArchitectures=arm64-v8a -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64 --max-workers=4 --build-cache --profile -x lintVitalRelease 2>&1 | tee "$RUNNER_TEMP/gradle-build.log" || status=$?
           ccache --show-stats -v
           mkdir -p ../build-output
           cp app/build/outputs/apk/release/app-release.apk ../build-output/t3code-ssh.apk
           exit "$status"
+
+      - name: Upload Gradle profile
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-gradle-profile
+          path: apps/mobile/android/build/reports/profile/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload SSH test results
         if: ${{ !cancelled() && steps.native.outputs.tests == 'true' }}

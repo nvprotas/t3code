@@ -6,12 +6,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { useControlTheme } from "../../components/ui/useControlTheme";
 import { cn } from "../../lib/cn";
 import type { OfficeStatus } from "./officeStatus";
-import {
-  OFFICE_SPRITE_HEIGHT,
-  OFFICE_SPRITE_WIDTH,
-  officePalette,
-  officeSprite,
-} from "./sprites";
+import { OFFICE_SPRITE_HEIGHT, OFFICE_SPRITE_WIDTH, officePalette, officeSprite } from "./sprites";
 
 // Padding plus the waiting border, which every desk reserves so none shifts.
 const DESK_PADDING = 4;

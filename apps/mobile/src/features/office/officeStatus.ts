@@ -42,13 +42,7 @@ export function buildOfficeGroups<
   T extends OfficeThreadInput &
     Pick<
       EnvironmentThreadShell,
-      | "archivedAt"
-      | "environmentId"
-      | "id"
-      | "lineage"
-      | "settledOverride"
-      | "title"
-      | "updatedAt"
+      "archivedAt" | "environmentId" | "id" | "lineage" | "settledOverride" | "title" | "updatedAt"
     >,
 >(
   environments: ReadonlyArray<{
