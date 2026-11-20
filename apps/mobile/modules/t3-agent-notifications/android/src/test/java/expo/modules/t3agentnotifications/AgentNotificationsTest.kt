@@ -610,6 +610,46 @@ class AgentNotificationsTest : AgentNotificationsFixture() {
     )
     assertEquals(promoted, NotificationCompat.isRequestPromotedOngoing(finishedCard))
     assertEquals(promoted, finishedCard.flags and Notification.FLAG_ONGOING_EVENT != 0)
+
+    AgentNotifications.clear(context)
+    val local = mapOf(
+      "activity_identity" to "local-run-1",
+      "activity_phase" to "running",
+      "activity_active_count" to "1",
+      "activity_attention_count" to "0",
+      "activity_line_0" to "Working\tLocal thread\tProject",
+      "activity_path" to "/threads/local/thread",
+    )
+    AgentNotifications.showLocalActivity(context, "t3code-dev", local)
+    assertEquals("Working", manager.activeNotifications.single().notification.extras
+      .getString(NotificationCompat.EXTRA_SHORT_CRITICAL_TEXT))
+    AgentNotifications.showLocalActivity(context, "t3code-dev", local + mapOf(
+      "activity_phase" to "waiting_for_input",
+      "activity_line_0" to "Input\tLocal thread\tProject",
+      "activity_attention_count" to "1",
+    ))
+    assertEquals("Answer", manager.activeNotifications.single().notification.extras
+      .getString(NotificationCompat.EXTRA_SHORT_CRITICAL_TEXT))
+    AgentNotifications.dismiss(context)
+    AgentNotifications.showLocalActivity(context, "t3code-dev", local)
+    assertTrue(manager.activeNotifications.isEmpty())
+
+    val done = local + mapOf(
+      "activity_identity" to "local-run-2",
+      "activity_phase" to "completed",
+      "activity_active_count" to "0",
+      "activity_line_0" to "Done\tLocal thread\tProject",
+      "activity_expires_at" to "4102444800000",
+    )
+    AgentNotifications.showLocalActivity(context, "t3code-dev", done)
+    val doneCard = manager.activeNotifications.single().notification
+    assertEquals("Done", doneCard.extras.getString(NotificationCompat.EXTRA_SHORT_CRITICAL_TEXT))
+    assertTrue(NotificationCompat.isRequestPromotedOngoing(doneCard))
+    AgentNotifications.showLocalActivity(context, "t3code-dev", done + ("activity_expires_at" to "1"))
+    assertTrue(manager.activeNotifications.isEmpty())
+    AgentNotifications.showLocalActivity(context, "t3code-dev", local)
+    AgentNotifications.showLocalActivity(context, "t3code-dev", null)
+    assertTrue(manager.activeNotifications.isEmpty())
   }
 
   @Test

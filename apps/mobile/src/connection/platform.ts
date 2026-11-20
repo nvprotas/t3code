@@ -5,6 +5,11 @@ import {
   Connectivity,
   Wakeups,
 } from "@t3tools/client-runtime/connection";
+import {
+  bootstrapRemoteBearerSession,
+  fetchRemoteSessionState,
+} from "@t3tools/client-runtime/authorization";
+import { fetchRemoteEnvironmentDescriptor } from "@t3tools/client-runtime/environment";
 import { managedRelayAccountChanges, managedRelaySessionAtom } from "@t3tools/client-runtime/relay";
 import * as Clock from "effect/Clock";
 import { msg } from "gt-react-native";
@@ -15,6 +20,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
+import * as HttpClient from "effect/http/HttpClient";
 import Constants from "expo-constants";
 import * as Network from "expo-network";
 import { AppState } from "react-native";
@@ -26,6 +32,10 @@ import { appAtomRegistry } from "../state/atom-registry";
 import { mobileApplicationActiveWakeup } from "./app-state-wakeups";
 import * as EnvironmentOwnedDataCleanup from "./environment-owned-data-cleanup";
 import * as ConnectionStorage from "./storage";
+import { readSshCredentials, updateSshCredentials } from "./ssh/credentials";
+import { makeMobileSshGateway } from "./ssh/gateway";
+import { sshNative } from "./ssh/native";
+import { requestHostKeyConfirmation, requestPassphrase } from "./ssh/prompts";
 
 function networkStatus(state: Network.NetworkState): "unknown" | "offline" | "online" {
   if (state.isConnected === false) {
@@ -149,6 +159,7 @@ const layerWakeups = Wakeups.layer({
 const layerCapabilities = Layer.effectContext(
   Effect.gen(function* () {
     const storage = yield* MobileStorage.MobileStorage;
+    const httpClient = yield* HttpClient.HttpClient;
     return Context.make(
       ClientCapabilities.CloudSession,
       ClientCapabilities.CloudSession.of({
@@ -221,35 +232,45 @@ const layerCapabilities = Layer.effectContext(
       ),
       Context.add(
         ClientCapabilities.SshEnvironmentGateway,
-        ClientCapabilities.SshEnvironmentGateway.of({
-          provision: Effect.fn("ClientCapabilities.SshEnvironmentGateway.provision")(() =>
-            Effect.fail(
-              new ConnectionBlockedError({
-                reason: "unsupported",
-                detail: m(
-                  msg("{feature} environments are only available in the desktop app.", {
-                    feature: "SSH",
-                  }),
-                ),
+        ClientCapabilities.SshEnvironmentGateway.of(
+          sshNative === null
+            ? {
+                provision: () =>
+                  Effect.fail(
+                    new ConnectionBlockedError({
+                      reason: "unsupported",
+                      detail: m(msg("SSH connections need the Android app.")),
+                    }),
+                  ),
+                prepare: () =>
+                  Effect.fail(
+                    new ConnectionBlockedError({
+                      reason: "unsupported",
+                      detail: m(msg("SSH connections need the Android app.")),
+                    }),
+                  ),
+                disconnect: () => Effect.void,
+              }
+            : makeMobileSshGateway({
+                transport: sshNative,
+                readSshCredentials,
+                updateSshCredentials,
+                requestHostKeyConfirmation,
+                requestPassphrase,
+                fetchRemoteEnvironmentDescriptor: (input) =>
+                  fetchRemoteEnvironmentDescriptor(input).pipe(
+                    Effect.provideService(HttpClient.HttpClient, httpClient),
+                  ),
+                fetchRemoteSessionState: (input) =>
+                  fetchRemoteSessionState(input).pipe(
+                    Effect.provideService(HttpClient.HttpClient, httpClient),
+                  ),
+                bootstrapRemoteBearerSession: (input) =>
+                  bootstrapRemoteBearerSession(input).pipe(
+                    Effect.provideService(HttpClient.HttpClient, httpClient),
+                  ),
               }),
-            ),
-          ),
-          prepare: Effect.fn("ClientCapabilities.SshEnvironmentGateway.prepare")(() =>
-            Effect.fail(
-              new ConnectionBlockedError({
-                reason: "unsupported",
-                detail: m(
-                  msg("{feature} environments are only available in the desktop app.", {
-                    feature: "SSH",
-                  }),
-                ),
-              }),
-            ),
-          ),
-          disconnect: Effect.fn("ClientCapabilities.SshEnvironmentGateway.disconnect")(
-            () => Effect.void,
-          ),
-        }),
+        ),
       ),
     );
   }),

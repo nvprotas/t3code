@@ -28,6 +28,7 @@ import { ConnectionFormField } from "./ConnectionFormField";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { environmentStatusText } from "./environmentStatusText";
 import type { MessageResolver } from "../../i18n/messages";
+import { environmentCatalog } from "../../connection/catalog";
 
 function connectionStatusLabel(
   environment: ConnectedEnvironmentSummary,
@@ -66,6 +67,10 @@ export function ConnectionEnvironmentRow(props: {
   const m = useMessages();
   const [label, setLabel] = useState(props.environment.environmentLabel);
   const [url, setUrl] = useState(props.environment.displayUrl);
+  const entry = useAtomValue(environmentCatalog.catalogValueAtom).entries.get(
+    props.environment.environmentId,
+  );
+  const editable = entry?.target._tag === "BearerConnectionTarget";
   const serverConfig = useAtomValue(
     serverEnvironment.configValueAtom(props.environment.environmentId),
   );
@@ -236,6 +241,7 @@ export function ConnectionEnvironmentRow(props: {
           {diagnosis ? (
             <ConnectionDiagnosisDetails
               hostLabel={props.environment.environmentLabel}
+              environmentId={props.environment.environmentId}
               diagnosis={diagnosis}
             />
           ) : null}
@@ -244,6 +250,10 @@ export function ConnectionEnvironmentRow(props: {
               {gt("Managed by {product}. Tunnel details update automatically.", {
                 product: "T3 Connect",
               })}
+            </Text>
+          ) : !editable ? (
+            <Text selectable className="font-mono text-sm">
+              {props.environment.displayUrl}
             </Text>
           ) : (
             <>
@@ -270,7 +280,7 @@ export function ConnectionEnvironmentRow(props: {
 
           {Platform.OS === "android" ? (
             <View className="flex-row items-center justify-end gap-2">
-              {props.environment.isRelayManaged ? null : (
+              {!editable || props.environment.isRelayManaged ? null : (
                 <View className="flex-1">
                   <Button
                     label={gt("Save")}
@@ -298,7 +308,7 @@ export function ConnectionEnvironmentRow(props: {
             </View>
           ) : (
             <View className="flex-row justify-end gap-2">
-              {props.environment.isRelayManaged ? null : (
+              {!editable || props.environment.isRelayManaged ? null : (
                 <Pressable
                   className="min-h-[42px] flex-1 flex-row items-center justify-center gap-1.5 rounded-[14px] bg-primary px-3.5 py-2.5 active:opacity-70"
                   onPress={handleSave}

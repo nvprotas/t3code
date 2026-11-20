@@ -9,6 +9,7 @@ import {
   presentConnectionDiagnosis,
   type EnvironmentPresentation,
 } from "@t3tools/client-runtime/connection";
+import * as Option from "effect/Option";
 import type { EnvironmentId } from "@t3tools/contracts";
 import Constants from "expo-constants";
 import { AsyncResult } from "effect/reactivity";
@@ -17,6 +18,7 @@ import { Linking, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { environmentCatalog } from "../../connection/catalog";
+import { sshDiagnosticsText } from "../../connection/ssh/diagnostics";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 
@@ -53,8 +55,10 @@ export function useConnectionDiagnosis(
 export function ConnectionDiagnosisDetails(props: {
   readonly hostLabel: string;
   readonly diagnosis: ConnectionDiagnosis;
+  readonly environmentId: EnvironmentId;
 }) {
   const gt = useGT();
+  const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
   const { diagnosis } = props;
   const { moreInfoUrl } = diagnosis;
   return (
@@ -93,9 +97,24 @@ export function ConnectionDiagnosisDetails(props: {
         label={gt("Copy diagnostics")}
         icon="doc.on.doc"
         onPress={() => {
-          copyTextWithHaptic(connectionDiagnosisText(props.hostLabel, diagnosis), {
-            target: "connection-diagnostics",
-          });
+          const entry = catalog.entries.get(props.environmentId);
+          const ssh =
+            entry === undefined
+              ? []
+              : connectionRoutes(entry).flatMap((route) => {
+                  const profile = Option.getOrNull(route.profile);
+                  return profile?._tag === "SshConnectionProfile"
+                    ? [sshDiagnosticsText(profile.target)]
+                    : [];
+                });
+          copyTextWithHaptic(
+            [connectionDiagnosisText(props.hostLabel, diagnosis), ...ssh]
+              .filter(Boolean)
+              .join("\n\n"),
+            {
+              target: "connection-diagnostics",
+            },
+          );
         }}
       />
       {moreInfoUrl ? (

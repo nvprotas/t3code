@@ -1,4 +1,5 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import { EnvironmentId, DesktopSshEnvironmentTargetSchema } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Option from "effect/Option";
 
@@ -10,6 +11,7 @@ import {
 import { pullRequestRoutingConnectionKey } from "./pullRequestRoutingPermissions.ts";
 import { BearerConnectionTarget, RelayConnectionTarget } from "./model.ts";
 import {
+  sshTargetKey,
   connectionRouteId,
   connectionRouteKind,
   connectionRouteLabel,
@@ -26,6 +28,9 @@ import {
   upsertRoute,
   usableRoutes,
 } from "./routes.ts";
+
+const encodeSshTarget = Schema.encodeSync(DesktopSshEnvironmentTargetSchema);
+const decodeSshTarget = Schema.decodeUnknownSync(DesktopSshEnvironmentTargetSchema);
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 
@@ -466,5 +471,22 @@ describe("learned routes", () => {
     });
     expect(moved).not.toBeNull();
     expect(profileOf(moved![0]!)).toMatchObject({ httpBaseUrl: "https://desk.local:3773/" });
+  });
+});
+
+describe("SSH route identity", () => {
+  it("preserves direct profile keys and separates identical targets behind different bastions", () => {
+    const target = { alias: "dev", hostname: "127.0.0.1", username: "dev", port: 22002 };
+    const bastion = { alias: "jump", hostname: "jump-a.test", username: "access", port: null };
+    expect(sshTargetKey(target)).toBe(JSON.stringify(["dev", "127.0.0.1", "dev", 22002]));
+    const encoded = encodeSshTarget({ ...target, bastion });
+    expect(decodeSshTarget(JSON.parse(JSON.stringify(encoded)))).toEqual({ ...target, bastion });
+    expect(sshTargetKey({ ...target, bastion })).not.toBe(sshTargetKey(target));
+    expect(sshTargetKey({ ...target, bastion })).not.toBe(
+      sshTargetKey({ ...target, bastion: { ...bastion, hostname: "jump-b.test" } }),
+    );
+    expect(sshTargetKey({ ...target, bastion })).toBe(
+      sshTargetKey({ ...target, bastion: { ...bastion, alias: "renamed", port: 22 } }),
+    );
   });
 });

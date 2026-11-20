@@ -48,6 +48,7 @@ import {
   RenderFailureView,
   type RenderFailureProps,
 } from "./components/RenderErrorBoundary";
+import { LocalThreadNotificationsWorker } from "./features/agent-awareness/LocalThreadNotificationsWorker";
 import { ArchivedThreadsRouteScreen } from "./features/archive/ArchivedThreadsRouteScreen";
 import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
 import { AttachmentFileScreen } from "./features/files/AttachmentFileScreen";
@@ -489,6 +490,7 @@ function RootStackLayout(props: {
       routeDraftId={routeDraftId}
     >
       <HardwareKeyboardCommandProvider pathname={pathname}>
+        <LocalThreadNotificationsWorker />
         <ShowcaseReadyMarker />
         <SettingsEnvironmentFilterProvider open={settingsOpen}>
           <WorkspaceConnectionStatusProvider>

@@ -19,6 +19,10 @@
       "types": "./src/errors.ts",
       "import": "./src/errors.ts"
     },
+    "./scripts": {
+      "types": "./src/scripts.ts",
+      "import": "./src/scripts.ts"
+    },
     "./tunnel": {
       "types": "./src/tunnel.ts",
       "import": "./src/tunnel.ts"

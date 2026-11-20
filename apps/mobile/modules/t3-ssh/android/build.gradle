@@ -1,0 +1,36 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.t3tools.ssh'
+version = '0.0.0'
+
+android {
+  namespace 'expo.modules.t3ssh'
+  defaultConfig {
+    versionCode 1
+    versionName '0.0.0'
+    consumerProguardFiles 'proguard-rules.pro'
+  }
+  // SshKeys logs failures with android.util.Log, a throwing stub in JVM tests.
+  testOptions {
+    unitTests.returnDefaultValues = true
+    unitTests.includeAndroidResources = true
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  // The app already ships the jdk15to18 BouncyCastle build; a second
+  // (jdk18on) copy fails the release build with duplicate classes.
+  implementation('com.hierynomus:sshj:0.40.0') {
+    exclude group: 'org.bouncycastle'
+  }
+  implementation 'org.bouncycastle:bcprov-jdk15to18:1.81'
+  implementation 'org.bouncycastle:bcpkix-jdk15to18:1.81'
+  implementation 'org.slf4j:slf4j-nop:2.0.17'
+  implementation 'androidx.core:core:1.17.0'
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.robolectric:robolectric:4.16.1'
+}

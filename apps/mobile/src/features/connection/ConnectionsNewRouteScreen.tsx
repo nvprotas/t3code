@@ -7,6 +7,7 @@ import { useAuth } from "@clerk/expo";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import {
+  CommonActions,
   StackActions,
   useIsFocused,
   useNavigation,
@@ -31,6 +32,9 @@ import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { CloudEnvironmentRows } from "./CloudEnvironmentRows";
 import { autoConnectReport, devAutoConnectAttemptAtom } from "./devAutoConnect";
 import { splitEnvironmentSections } from "./environmentSections";
+import { Button } from "../../components/ui/Button";
+import { isSshSupported } from "../../connection/ssh/native";
+import { SshConnectionForm } from "./SshConnectionForm";
 import { leaveSettingsPage } from "../settings/settings-navigation";
 import { workspaceHasColumns } from "../layout/workspace/workspace-selection-store";
 import { m } from "../../i18n/messages";
@@ -45,6 +49,9 @@ type ConnectionsNewRouteParams = {
 export function ConnectionsNewRouteScreen({
   route,
 }: StaticScreenProps<ConnectionsNewRouteParams | undefined>) {
+  if (route.params?.mode === "ssh") {
+    return <SshConnectionForm expectedEnvironmentId={route.params.routeFor} />;
+  }
   const params = route.params ?? {};
   // Dev-only prefill prevents production links from supplying an attacker-chosen host and token.
   const routePairingUrl = __DEV__ ? (params.pairingUrl?.trim() ?? "") : "";
@@ -270,6 +277,13 @@ function PairingForm({
           </View>
 
           {hasCloudPublicConfig() ? <T3ConnectSection /> : null}
+          {isSshSupported() ? (
+            <Button
+              label="Connect over SSH"
+              fullWidth
+              onPress={() => navigation.dispatch(CommonActions.setParams({ mode: "ssh" }))}
+            />
+          ) : null}
         </View>
       </ScrollView>
     </SettingsScreen>

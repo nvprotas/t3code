@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
+  type ConnectionOnboarding,
   RelayConnectionRegistration,
   RelayConnectionTarget,
 } from "@t3tools/client-runtime/connection";
@@ -11,17 +12,22 @@ import type {
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { useMessages } from "gt-react-native";
 import * as Option from "effect/Option";
+import { AsyncResult } from "effect/reactivity";
 import { useMemo } from "react";
 
 import { environmentCatalog } from "../../connection/catalog";
 import {
   connectPairingUrl as connectPairingUrlAtom,
+  connectSsh as connectSshAtom,
   updateBearerConnection,
 } from "../../connection/onboarding";
 import { useWorkspaceEnvironments } from "../../state/workspace";
 import { relayEnvironmentDiscovery } from "../../state/relay";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { relayManagedEnvironmentIds } from "./environmentSections";
+import { appAtomRegistry } from "../../state/atom-registry";
+import { cleanupSshCredentials } from "./sshCredentialsCleanup";
+import { savedSshTargets } from "./sshTarget";
 
 export interface RelayEnvironmentView {
   readonly environment: RelayClientEnvironmentRecord;
@@ -39,6 +45,7 @@ export function useConnectionController() {
     reportFailure: false,
   });
   const updateBearer = useAtomCommand(updateBearerConnection, { reportFailure: false });
+  const connectSshMutation = useAtomCommand(connectSshAtom, { reportFailure: false });
   const registerEnvironment = useAtomCommand(environmentCatalog.register, "environment register");
   const removeEnvironmentMutation = useAtomCommand(environmentCatalog.remove, "environment remove");
   const setEnvironmentEnabledMutation = useAtomCommand(
@@ -84,8 +91,18 @@ export function useConnectionController() {
         }),
       }),
     );
-  const removeEnvironment = (environmentId: EnvironmentId) =>
-    removeEnvironmentMutation(environmentId);
+  const connectSsh = (input: ConnectionOnboarding.SshConnectionInput) => connectSshMutation(input);
+  const removeEnvironment = async (environmentId: EnvironmentId) => {
+    const entry = appAtomRegistry
+      .get(environmentCatalog.catalogValueAtom)
+      .entries.get(environmentId);
+    const targets = savedSshTargets(entry === undefined ? [] : [entry]);
+    const result = await removeEnvironmentMutation(environmentId);
+    if (AsyncResult.isSuccess(result)) {
+      await Promise.all(targets.map((target) => cleanupSshCredentials(target, environmentId)));
+    }
+    return result;
+  };
   const setEnvironmentEnabled = (environmentId: EnvironmentId, enabled: boolean) =>
     setEnvironmentEnabledMutation({ environmentId, enabled });
   const updateEnvironment = (
@@ -109,6 +126,7 @@ export function useConnectionController() {
       errorTraceId: Option.getOrNull(discovery.error)?.traceId ?? null,
     },
     connectPairingUrl,
+    connectSsh,
     connectRelayEnvironment,
     removeEnvironment,
     setEnvironmentEnabled,

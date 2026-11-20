@@ -284,6 +284,56 @@ again on its next connect.
 For Antigravity's Google callback on a remote host, see
 [remote sign-in](./providers-antigravity.md#sign-in-from-a-remote-device).
 
+## SSH from Android
+
+The Android app can reach a T3 Code server that is already running on a machine
+you can SSH into. It does not install or start the server; start it there first,
+for example with `npx t3` or `t3 service install`.
+
+Open **Settings → Connections → Add environment → Connect over SSH** and enter
+the host, port, and username. Choose an SSH key: generate one on the phone and
+add the shown public key to `~/.ssh/authorized_keys` on the server, or import or
+paste an existing private key. Only key authentication is supported. Keys are
+encrypted on the device and are removed together with the connection.
+
+To connect through a bastion, choose **Use bastion** and enter its SSH address,
+username, and key. The target address is reached from the bastion; for a reverse
+tunnel, enter its assigned address, such as `127.0.0.1:22002`. The app verifies
+the bastion and target host keys separately. This SSH route always uses the
+bastion; other saved routes to the same environment remain available.
+
+If connecting fails, choose **Copy diagnostics** in the SSH form or the saved
+environment's connection details. SSH diagnostics include connection stages and
+error codes, but exclude private keys, passphrases, tokens, and remote command
+output. They stay in memory until the app closes.
+
+On the first connection, compare the displayed host key fingerprint with the
+server's, for example `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. A
+changed host key blocks the connection; remove it and add it again after you
+verify the new key. A passphrase for an encrypted key is asked once per app
+session and never saved.
+
+The SSH account must allow TCP forwarding. The app finds the server through
+`~/.t3/userdata/server-runtime.json` on that machine, so the server has to run
+as the same user with the default T3 home.
+
+SSH connections stay active when you switch to another app. Android shows an
+ongoing SSH notification. Turn off the environment or remove its SSH route to
+disconnect. Closing the app from the recent-apps list also ends its SSH connections.
+
+App builds without T3 Connect cannot receive push notifications. Turn on
+**Settings → Notifications → Thread Notifications** to get alerts when a thread
+finishes, fails, or needs input. They only arrive while the app keeps its
+connection. With an active SSH connection, the app can keep receiving updates
+in the background. Android battery restrictions or a lost network can still
+interrupt delivery; force-stopping the app ends it.
+
+On Android, **Agent Live Updates** in the same settings page shows whether an
+agent is working, needs approval or an answer, or has just finished. Allow Live
+Updates in Android's notification settings to show the status beside the clock
+on supported phones. Tapping it opens the relevant thread. Completed runs stay
+visible briefly; disconnected environments stop contributing to the status.
+
 ## Browser on a remote environment
 
 Browser tabs belong to the environment, so you and your agents see the same

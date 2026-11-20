@@ -191,6 +191,11 @@ export const make = Effect.gen(function* () {
     }, Effect.provide(runtimeContext)),
     ensureEnvironment: Effect.fn("desktop.ssh.ensureEnvironment")(
       function* (target, ensureOptions) {
+        if (target.bastion !== undefined) {
+          return yield* new SshInvalidTargetError({
+            message: "Bastion SSH profiles require the Android app.",
+          });
+        }
         return yield* manager.ensureEnvironment(target, ensureOptions);
       },
       Effect.provideService(SshAuth.SshPasswordPrompt, passwordPrompt),

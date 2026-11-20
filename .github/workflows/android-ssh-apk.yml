@@ -1,0 +1,247 @@
+name: Android SSH APK
+
+# Fork-only: builds the preview-variant APK with the SSH connection module.
+# Drop before proposing anything upstream.
+on:
+  push:
+    branches:
+      - android-ssh
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-ssh-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changed:
+    name: Check changed files
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 64
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Fetch comparison base
+        run: git fetch --no-tags https://github.com/pingdotgg/t3code.git main:refs/remotes/upstream/main
+
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-ci-deps
+
+      - name: Check changed files
+        run: vp run check:changed upstream/main --concurrency 1
+
+  apk:
+    name: Check and build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      APP_VARIANT: preview
+      EXPO_NO_GIT_STATUS: "1"
+      NODE_OPTIONS: --max-old-space-size=6144
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+    steps:
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@t3tools/mobile...
+              - --filter=@t3tools/ssh...
+              - --filter=@t3tools/monorepo
+              - --filter=@t3tools/oxlint-plugin-t3code
+
+      - name: Expose pnpm
+        run: |
+          pnpm_version="$(node --print "require('./package.json').packageManager.split('@').pop()")"
+          vp_pnpm_bin="$HOME/.vite-plus/package_manager/pnpm/$pnpm_version/pnpm/bin"
+          echo "$vp_pnpm_bin" >> "$GITHUB_PATH"
+          "$vp_pnpm_bin/pnpm" --version
+
+      # Checks run independently so one run reports every failure, and the APK
+      # still builds for device testing; any failed check fails the run.
+      - name: Typecheck ssh package
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @t3tools/ssh run typecheck
+
+      - name: Typecheck mobile
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @t3tools/mobile run typecheck
+
+      - name: Test ssh package
+        if: ${{ !cancelled() }}
+        working-directory: packages/ssh
+        run: vp test run --config ../../vite.config.ts --dir .
+
+      - name: Test mobile SSH and local notifications
+        if: ${{ !cancelled() }}
+        working-directory: apps/mobile
+        run: |
+          set -o pipefail
+          vp test run --config vite.config.ts src/connection/ssh src/features/connection src/features/agent-awareness/localThreadNotifications.test.ts 2>&1 | tee "$RUNNER_TEMP/mobile-ssh-tests.log"
+
+      - name: Upload mobile test diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-mobile-ssh-test-log
+          path: ${{ runner.temp }}/mobile-ssh-tests.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: vp lint apps/mobile/src/connection/ssh apps/mobile/src/features/connection apps/mobile/src/features/settings/EnvironmentRoutesSection.tsx apps/mobile/src/features/settings/SettingsNotificationsRouteScreen.tsx apps/mobile/src/features/agent-awareness packages/ssh/src
+
+      - name: Setup Java
+        if: ${{ !cancelled() }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            17
+
+      # setup-gradle writes its cache only on the default branch unless told
+      # otherwise, so every android-ssh build started from an empty Gradle home.
+      - name: Setup Gradle cache
+        if: ${{ !cancelled() }}
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
+
+      # The Gradle home cache only skips downloads; most of the build is C++
+      # compiled by CMake for native modules, so ccache carries it across runs.
+      - name: Setup ccache
+        if: ${{ !cancelled() }}
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: android-ssh-apk
+          max-size: 2G
+
+      - name: Generate Android project
+        if: ${{ !cancelled() }}
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --clean --platform android --no-install
+
+      - name: SSH and agent notification unit tests
+        if: ${{ !cancelled() }}
+        working-directory: apps/mobile/android
+        run: |
+          set -o pipefail
+          ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64 --max-workers=4 2>&1 | tee "$RUNNER_TEMP/native-ssh-tests.log"
+
+      - name: Upload SSH test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh-tests
+          path: |
+            ${{ runner.temp }}/native-ssh-tests.log
+            apps/mobile/modules/t3-ssh/android/build/reports/tests/testDebugUnitTest/
+            apps/mobile/modules/t3-agent-notifications/android/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Build release APK
+        if: ${{ !cancelled() }}
+        working-directory: apps/mobile
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_NOHASHDIR: "true"
+        run: |
+          cd android
+          ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=4 --build-cache
+          ccache --show-stats
+          mkdir -p ../build-output
+          cp app/build/outputs/apk/release/app-release.apk ../build-output/t3code-ssh.apk
+
+      # Without these secrets the APK keeps Expo's per-build debug signature,
+      # which cannot update an earlier install in place.
+      - name: Sign APK with the release key
+        if: ${{ !cancelled() && env.ANDROID_KEYSTORE_B64 != '' }}
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/release.jks"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$keystore"
+          build_tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          apk=apps/mobile/build-output/t3code-ssh.apk
+          "$build_tools/apksigner" sign \
+            --ks "$keystore" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --v4-signing-enabled false \
+            "$apk"
+          "$build_tools/apksigner" verify --print-certs "$apk" | grep -E 'DN|SHA-256'
+
+      - name: Upload APK
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh
+          path: apps/mobile/build-output/t3code-ssh.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      # A fresh release per successful build: watchers (Watch > Custom > Releases)
+      # get a notification with a direct APK link, which artifacts cannot give.
+      # The tag deliberately does not start with "v": upstream release tooling
+      # treats every v* tag as a desktop release.
+      - name: Publish release
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "android-ssh-v0.1.${{ github.run_number }}" \
+            apps/mobile/build-output/t3code-ssh.apk \
+            --prerelease \
+            --target "${{ github.sha }}" \
+            --title "Android SSH v0.1.${{ github.run_number }}" \
+            --notes "Commit ${{ github.sha }}"
+
+      # Decodes R8-obfuscated crash traces from this build.
+      - name: Upload R8 mapping
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh-mapping
+          path: apps/mobile/android/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Symbolicates Hermes JS stack traces from this build.
+      - name: Upload JS source map
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh-sourcemap
+          path: apps/mobile/android/app/build/generated/sourcemaps/react/release/index.android.bundle.map
+          if-no-files-found: warn
+          retention-days: 14
