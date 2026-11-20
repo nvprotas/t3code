@@ -1,12 +1,13 @@
-import { type NavigationTab } from "./navigation-tab-order";
+import type { PageTab } from "./navigation-tab-order";
 import { NativeStackScreenOptions } from "../../../native/StackHeader";
+import { OfficeScreen } from "../../office/OfficeScreen";
 import { UsageRouteScreen } from "../../usage/UsageRouteScreen";
 
-export function WorkspaceExtraTab(_props: { tab: Extract<NavigationTab, "usage"> }) {
+export function WorkspaceExtraTab(props: { tab: PageTab }) {
   return (
     <>
       <NativeStackScreenOptions options={{ headerSearchBarOptions: undefined }} />
-      <UsageRouteScreen workspace />
+      {props.tab === "office" ? <OfficeScreen /> : <UsageRouteScreen workspace />}
     </>
   );
 }

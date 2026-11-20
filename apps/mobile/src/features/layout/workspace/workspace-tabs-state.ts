@@ -1,5 +1,6 @@
 import {
   NAVIGATION_TAB_ORDER,
+  isPageTab,
   navigationCustomizationAvailable,
   resolveNavigationTabOrder,
   type NavigationTab,
@@ -16,9 +17,9 @@ export type WorkspaceTab = NavigationTab;
 export type WorkspaceSearchTab = WorkspaceTab | "settings";
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 
-/** Settings, Chats, pull requests and issues pair a list with a detail column; Usage is one page. */
+/** Settings and the list tabs pair a list with a detail column; Office and Usage are one page. */
 export function workspaceUsesColumns(tab: WorkspaceTab, settingsOpen = false) {
-  return settingsOpen || tab !== "usage";
+  return settingsOpen || !isPageTab(tab);
 }
 
 export interface WorkspaceTabState {
@@ -52,6 +53,7 @@ export function initialWorkspaceTabsState(
     selectionRevision: 0,
     tabs: {
       threads: emptyTab(),
+      office: emptyTab(),
       pullRequests: emptyTab(),
       issues: emptyTab(),
       usage: emptyTab(),
@@ -81,7 +83,7 @@ export function workspaceTabsReducer(
           selectionRevision: state.selectionRevision + 1,
         };
   const tab = action.tab ?? state.selectedTab;
-  if (tab === "usage") return state;
+  if (isPageTab(tab)) return state;
   const current = state.tabs[tab];
   let next: WorkspaceTabState;
   switch (action.type) {

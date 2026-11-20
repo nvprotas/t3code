@@ -2,7 +2,7 @@ import { useGT } from "gt-react-native";
 import { useAndroidFloatingTabs } from "../../settings/appearance/AppearancePreferencesProvider";
 import { WorkspaceNoTabs } from "./WorkspaceNoTabs";
 import { useEnabledNavigationTabs } from "./navigation-tabs";
-import { NAVIGATION_TAB_ORDER } from "./navigation-tab-order";
+import { NAVIGATION_TAB_ORDER, isPageTab } from "./navigation-tab-order";
 import { WorkspaceExtraTab } from "./WorkspaceExtraTab";
 import type { ReactNode } from "react";
 import { View } from "react-native";
@@ -78,7 +78,7 @@ function WorkspaceRoot() {
             layout.usesSplitView
               ? insets
               : floatingTabsEnabled
-                ? tab === "usage"
+                ? isPageTab(tab)
                   ? { ...insets, bottom: context.bottomClearance }
                   : insets
                 : { ...insets, bottom: 0 }
@@ -98,7 +98,7 @@ function WorkspaceRoot() {
                 renderTab={(tab) =>
                   tab === "threads" ? (
                     <HomeRouteScreen />
-                  ) : tab === "usage" ? (
+                  ) : isPageTab(tab) ? (
                     <WorkspacePageFrame width={workspacePageWidth ?? null}>
                       <WorkspaceExtraTab tab={tab} />
                     </WorkspacePageFrame>

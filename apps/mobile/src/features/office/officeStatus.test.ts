@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { officeThreadStatus } from "./officeStatus";
+import { buildOfficeGroups, officeThreadStatus } from "./officeStatus";
 
 type Input = Parameters<typeof officeThreadStatus>[0];
 
@@ -46,4 +46,36 @@ describe("officeThreadStatus", () => {
       ).toBe("disconnected");
     },
   );
+});
+
+describe("buildOfficeGroups", () => {
+  it("leaves out settled, archived and child threads but keeps the rest", () => {
+    const environment = { environmentId: "env" as never, environmentLabel: "Env" };
+    const lineage = {
+      parentThreadId: null,
+      relationshipToParent: null,
+      rootThreadId: "t" as never,
+    };
+    const listed = {
+      ...thread(),
+      environmentId: environment.environmentId,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      title: "Thread",
+      archivedAt: null,
+      settledOverride: null,
+      lineage,
+    };
+    const threads = [
+      { ...listed, id: "kept" as never },
+      { ...listed, id: "settled" as never, settledOverride: "settled" as const },
+      { ...listed, id: "archived" as never, archivedAt: "2026-01-02T00:00:00.000Z" },
+      {
+        ...listed,
+        id: "child" as never,
+        lineage: { ...lineage, relationshipToParent: "subagent" as const },
+      },
+    ];
+    const [group] = buildOfficeGroups([{ ...environment, connectionState: "connected" }], threads);
+    expect(group?.rows.map((row) => row.thread.id)).toEqual(["kept"]);
+  });
 });

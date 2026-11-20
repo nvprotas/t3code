@@ -1,5 +1,5 @@
 import { WorkspaceNoTabs } from "./WorkspaceNoTabs";
-import { isSharedSlotTab } from "./navigation-tab-order";
+import { isPageTab, isSharedSlotTab } from "./navigation-tab-order";
 import { SharedSlotTitle } from "./SharedSlotTitle";
 import { WORKSPACE_TAB_LABELS, useEnabledNavigationTabs } from "./navigation-tabs";
 import { WorkspaceExtraTab } from "./WorkspaceExtraTab";
@@ -118,7 +118,7 @@ function WorkspaceRootContent() {
   );
   const tab = state.tabs[settingsOpen ? "settings" : state.selectedTab];
   const bottomClearance =
-    layout.variant === "medium" && state.selectedTab === "usage"
+    layout.variant === "medium" && isPageTab(state.selectedTab)
       ? workspaceDockBottomClearance({ bottomInset: insets.bottom, keyboardHeight })
       : isDuoDevice(deviceType)
         ? // The column's safe area holds the Duo's search toolbar, but not the sidebar's own tab bar.
@@ -165,14 +165,14 @@ function WorkspaceRootContent() {
             // Beside a detail column the tab bar names the tab and the detail header the page,
             // so the sidebar keeps the brand.
             headerTitle:
-              sidebarNavigation || (!settingsOpen && state.selectedTab !== "usage")
+              sidebarNavigation || (!settingsOpen && !isPageTab(state.selectedTab))
                 ? renderHeaderTitle
                 : undefined,
           }}
         />
         <SafeAreaInsetsContext value={compactTabs ? { ...insets, bottom: 0 } : insets}>
-          {/* Usage draws its own header, and skips its body itself. */}
-          {headerOnly && (settingsOpen || state.selectedTab !== "usage") ? null : settingsOpen ? (
+          {/* Office and Usage draw their own header, and skip their body themselves. */}
+          {headerOnly && (settingsOpen || !isPageTab(state.selectedTab)) ? null : settingsOpen ? (
             <WorkspaceSettingsList />
           ) : enabled.length === 0 ? (
             <WorkspaceNoTabs />
@@ -190,7 +190,7 @@ function WorkspaceRootContent() {
           <WorkspaceSidebarTabs />
         ) : null}
         {enabled.length === 0 && !settingsOpen ? null : settingsOpen ||
-          state.selectedTab !== "usage" ? (
+          !isPageTab(state.selectedTab) ? (
           <WorkspaceToolbar sidebar={sidebarNavigation} onNewTask={startNewTask} />
         ) : (
           <WorkspaceSectionToolbar onNewTask={startNewTask} showCompose={false} />

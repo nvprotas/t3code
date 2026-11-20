@@ -1,3 +1,4 @@
+import { isListedThreadLineage } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { isThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
@@ -38,7 +39,17 @@ const STATUS_RANK: Readonly<Record<OfficeStatus, number>> = {
 };
 
 export function buildOfficeGroups<
-  T extends OfficeThreadInput & Pick<EnvironmentThreadShell, "environmentId" | "updatedAt">,
+  T extends OfficeThreadInput &
+    Pick<
+      EnvironmentThreadShell,
+      | "archivedAt"
+      | "environmentId"
+      | "id"
+      | "lineage"
+      | "settledOverride"
+      | "title"
+      | "updatedAt"
+    >,
 >(
   environments: ReadonlyArray<{
     readonly environmentId: EnvironmentThreadShell["environmentId"];
@@ -53,7 +64,13 @@ export function buildOfficeGroups<
     connectionState: environment.connectionState,
     // Hermes lacks toSorted.
     rows: threads
-      .filter((thread) => thread.environmentId === environment.environmentId)
+      .filter(
+        (thread) =>
+          thread.environmentId === environment.environmentId &&
+          thread.archivedAt === null &&
+          isListedThreadLineage(thread.lineage) &&
+          thread.settledOverride !== "settled",
+      )
       .map((thread) => ({
         thread,
         status: officeThreadStatus(thread, environment.connectionState),

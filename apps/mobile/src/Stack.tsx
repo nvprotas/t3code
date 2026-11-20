@@ -139,7 +139,6 @@ import { SettingsProjectOverviewRouteScreen } from "./features/settings/Settings
 import { UsageLimitAccountScreen } from "./features/usage/UsageLimitsPooled";
 import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
 import { SettingsAboutRouteScreen } from "./features/settings/SettingsAboutRouteScreen";
-import { SettingsOfficeRouteScreen } from "./features/office/SettingsOfficeRouteScreen";
 import { SettingsNotificationsRouteScreen } from "./features/settings/SettingsNotificationsRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { SettingsLabsRouteScreen } from "./features/settings/ThreadSettingsSections";
@@ -181,7 +180,6 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
   SettingsNotifications: msg("Notifications"),
   SettingsThreads: msg("Threads"),
   SettingsAbout: msg("About"),
-  SettingsOffice: msg("Office"),
   SettingsEnvironmentNew: msg("Add Environment"),
   SettingsArchive: msg("Archive", { $context: "noun, settings page of archived threads" }),
   SettingsNavigation: msg("Navigation tabs"),
@@ -305,11 +303,6 @@ const SETTINGS_SCREENS = {
   SettingsAbout: createNativeStackScreen({
     screen: SettingsAboutRouteScreen,
     linking: "settings/about",
-    options: settingsPage(),
-  }),
-  SettingsOffice: createNativeStackScreen({
-    screen: SettingsOfficeRouteScreen,
-    linking: "settings/office",
     options: settingsPage(),
   }),
   SettingsEnvironmentNew: createNativeStackScreen({

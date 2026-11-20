@@ -7,6 +7,7 @@ import { NewThreadButton } from "../../components/NewThreadButton";
 import { FloatingActionButton } from "../../components/ui/FloatingActionButton";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ScreenContent } from "../../components/ui/ScreenContent";
+import { isPageTab } from "./workspace/navigation-tab-order";
 import type { WorkspaceTab } from "./workspace/workspace-tabs-state";
 
 export function WorkspaceEmptyDetail(props: {
@@ -18,7 +19,7 @@ export function WorkspaceEmptyDetail(props: {
   const pullRequests = props.tab === "pullRequests";
   const issues = props.tab === "issues";
   const settings = props.tab === "settings";
-  if (props.tab === "usage") return <View className="flex-1 bg-screen" />;
+  if (isPageTab(props.tab)) return <View className="flex-1 bg-screen" />;
   return (
     <ScreenContent surface="screen">
       <View
