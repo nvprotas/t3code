@@ -11,6 +11,8 @@ export interface OfficeAgent {
   readonly id: string;
   readonly name: string;
   readonly status: OfficeStatus;
+  /** Running subagents; on Android the thread then moves into a private office. */
+  readonly subagents?: number;
 }
 
 export interface Walker {

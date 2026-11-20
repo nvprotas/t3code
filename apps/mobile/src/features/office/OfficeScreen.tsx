@@ -13,6 +13,7 @@ import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { OfficeAgentCard } from "./OfficeAgentCard";
 import { OfficeDebugCard } from "./OfficeDebugCard";
 import { officeCrashedLastTime, readOfficeLog } from "./officeLog";
+import { officeShortNames } from "./officeNames";
 import { OfficeRoom } from "./OfficeRoom";
 import { OfficeSceneFailure } from "./OfficeSceneFailure";
 import { buildOfficeGroups } from "./officeStatus";
@@ -40,13 +41,14 @@ export function OfficeScreen() {
   const groups = buildOfficeGroups(environments, threads);
   const rows = groups.flatMap((group) => group.rows);
   // Threads of unreachable environments stay in the list below but get no one in the room.
-  const agents = rows
-    .filter((row) => row.status !== "disconnected")
-    .map((row) => ({
-      id: String(row.thread.id),
-      name: row.thread.title,
-      status: row.status,
-    }));
+  const present = rows.filter((row) => row.status !== "disconnected");
+  const names = officeShortNames(present.map((row) => row.thread.title));
+  const agents = present.map((row, index) => ({
+    id: String(row.thread.id),
+    name: names[index] ?? row.thread.title,
+    status: row.status,
+    subagents: row.thread.pendingBackgroundTasks.filter((task) => task.kind === "subagent").length,
+  }));
   const selectedGroup = groups.find((group) =>
     group.rows.some((row) => String(row.thread.id) === selectedId),
   );

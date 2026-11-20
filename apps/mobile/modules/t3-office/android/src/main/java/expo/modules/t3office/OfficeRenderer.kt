@@ -5,7 +5,9 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Picture
+import java.util.TimeZone
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -13,10 +15,11 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private const val HALF_WIDTH = 8.9f
-private const val TARGET_X = 0f
+private const val HALF_WIDTH = 11.6f
+private const val TARGET_X = -0.85f
 private const val TARGET_Y = 0.6f
-private const val TARGET_Z = 0.5f
+private const val TARGET_Z = -1.0f
+private const val MINI_SCALE = 0.68f
 
 private fun normalized(x: Float, y: Float, z: Float): FloatArray {
   val length = sqrt(x * x + y * y + z * z)
@@ -46,8 +49,11 @@ private val SKIN = Color.parseColor("#f1c9a5")
 private val LEGS = Color.parseColor("#334155")
 private val EYES = Color.parseColor("#1f2937")
 private val OFFLINE = Color.parseColor("#6b7280")
-private val ALERT = Color.parseColor("#fbbf24")
+private val ALERT = Color.parseColor("#f97316")
 private val RING = Color.parseColor("#facc15")
+private val LED_ON = intArrayOf(Color.parseColor("#22c55e"), Color.parseColor("#38bdf8"), Color.parseColor("#f59e0b"))
+private val LED_OFF = Color.parseColor("#0b1220")
+private val BALL = Color.parseColor("#fff7ed")
 
 private fun mix(color: Int, other: Int, amount: Float): Int = Color.rgb(
   (Color.red(color) + (Color.red(other) - Color.red(color)) * amount).roundToInt(),
@@ -67,14 +73,17 @@ private fun shade(color: Int, nx: Float, ny: Float, nz: Float): Int {
 /** Which body part a walker block belongs to; limbs swing about their pivot. */
 private enum class Slot { BODY, LEG_LEFT, LEG_RIGHT, ARM_LEFT, ARM_RIGHT }
 
-private enum class Tint { SHIRT, SKIN, HAIR, EYES, LEGS }
+private enum class Tint { SHIRT, SKIN, HAIR, EYES, LEGS, FIXED }
 
 private class WalkerBlock(val part: Part, val slot: Slot, val tint: Tint)
 
-private fun block(w: Float, h: Float, d: Float, x: Float, y: Float, z: Float, slot: Slot, tint: Tint) =
-  WalkerBlock(Part(w, h, d, x, y, z, 0), slot, tint)
+private fun block(w: Float, h: Float, d: Float, x: Float, y: Float, z: Float, slot: Slot, tint: Tint, color: Int = 0) =
+  WalkerBlock(Part(w, h, d, x, y, z, color), slot, tint)
 
-private val WALKER_BLOCKS = arrayOf(
+private fun prop(w: Float, h: Float, d: Float, x: Float, y: Float, z: Float, slot: Slot, hex: String) =
+  block(w, h, d, x, y, z, slot, Tint.FIXED, Color.parseColor(hex))
+
+private val BODY_BLOCKS = listOf(
   block(0.42f, 0.45f, 0.25f, 0f, 0.675f, 0f, Slot.BODY, Tint.SHIRT),
   block(0.3f, 0.3f, 0.3f, 0f, 1.06f, 0f, Slot.BODY, Tint.SKIN),
   block(0.32f, 0.09f, 0.32f, 0f, 1.235f, 0f, Slot.BODY, Tint.HAIR),
@@ -88,13 +97,40 @@ private val WALKER_BLOCKS = arrayOf(
   block(0.1f, 0.3f, 0.1f, 0.27f, 0.73f, 0f, Slot.ARM_RIGHT, Tint.SHIRT),
   block(0.09f, 0.1f, 0.09f, 0.27f, 0.53f, 0f, Slot.ARM_RIGHT, Tint.SKIN),
 )
-private val ALERT_TOP = Part(0.11f, 0.26f, 0.11f, 0f, 0f, 0f, ALERT, flat = true)
-private val ALERT_DOT = Part(0.11f, 0.1f, 0.11f, 0f, 0f, 0f, ALERT, flat = true)
+private val CUP = listOf(prop(0.1f, 0.12f, 0.1f, 0.27f, 0.46f, 0.08f, Slot.ARM_RIGHT, "#f8fafc"))
+private val PADDLE = listOf(prop(0.04f, 0.18f, 0.16f, 0.27f, 0.4f, 0.1f, Slot.ARM_RIGHT, "#dc2626"))
+private val BOOK = listOf(prop(0.36f, 0.26f, 0.05f, 0f, 0.72f, 0.3f, Slot.BODY, "#7c3aed"))
+// A subagent's stool, small table and laptop, carried in its own frame so they sort with it.
+private val MINI_DESK = listOf(
+  prop(0.4f, 0.4f, 0.4f, 0f, 0.2f, 0f, Slot.BODY, "#475569"),
+  prop(0.1f, 0.72f, 0.1f, 0f, 0.36f, 0.62f, Slot.BODY, "#4a2c17"),
+  prop(0.8f, 0.06f, 0.45f, 0f, 0.74f, 0.55f, Slot.BODY, "#c08a53"),
+  prop(0.42f, 0.03f, 0.28f, 0f, 0.785f, 0.5f, Slot.BODY, "#cbd5e1"),
+  prop(0.42f, 0.28f, 0.03f, 0f, 0.93f, 0.66f, Slot.BODY, "#cbd5e1"),
+  prop(0.36f, 0.22f, 0.01f, 0f, 0.93f, 0.645f, Slot.BODY, "#5eead4"),
+)
+
+private const val ITEM_FURNITURE = 0
+private const val ITEM_WALKER = 1
+private const val ITEM_MINI = 2
+private const val ITEM_BALL = 3
+
+private class DrawItem {
+  var type = 0
+  var index = 0
+  var depth = 0f
+  var walker: Walker? = null
+}
 
 /** Projects the office onto a canvas; furniture is recorded once, walkers are drawn every frame. */
 class OfficeRenderer(val width: Int, val height: Int) {
   private val scale = width / (2f * HALF_WIDTH)
   private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+  private val handPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    style = Paint.Style.STROKE
+    strokeCap = Paint.Cap.ROUND
+    color = Color.parseColor("#111827")
+  }
   private val path = Path()
   private val world = FloatArray(24)
   private val sx = FloatArray(8)
@@ -103,6 +139,7 @@ class OfficeRenderer(val width: Int, val height: Int) {
   // Current walker transform, set before drawing its blocks.
   private var wx = 0f
   private var wz = 0f
+  private var k = 1f
   private var headingCos = 1f
   private var headingSin = 0f
   private var tiltCos = 1f
@@ -111,25 +148,42 @@ class OfficeRenderer(val width: Int, val height: Int) {
   private var limbPivot = 0f
   private var limbCos = 1f
   private var limbSin = 0f
-  private var spinCos = 1f
-  private var spinSin = 0f
   private var hasLimb = false
-  private var hasSpin = false
   private var transformed = false
 
   private val backdrop: Picture
   private val furniture: List<Furniture> = OfficeScenery.furniture()
   private val furnitureDepths: FloatArray
   private val furniturePictures: List<Picture>
+  private val rackLeds = listOf(OfficeScenery.rackLeds(0), OfficeScenery.rackLeds(1))
+  private val carpets = List(OfficeWorld.CABINETS) { OfficeScenery.carpet(it) }
+  private val signs = List(OfficeWorld.CABINETS) { OfficeScenery.sign(it) }
+  private val deskScreens = List(OfficeWorld.DESKS) {
+    val desk = OfficeWorld.desk(it)
+    OfficeScenery.screen(desk.x, desk.z, 0)
+  }
+  private val cabinetScreens = List(OfficeWorld.CABINETS) {
+    OfficeScenery.screen(OfficeWorld.cabinetX[it], OfficeWorld.CABINET_DESK_Z, 0)
+  }
   private val pose = Pose()
-  private val blockOrder = IntArray(WALKER_BLOCKS.size)
-  private val blockDepth = FloatArray(WALKER_BLOCKS.size)
+  private val blocks = ArrayList<WalkerBlock>(24)
+  private val blockOrder = IntArray(24)
+  private val blockDepth = FloatArray(24)
   private val tmp = FloatArray(3)
+  private val zoneOffsetMs = TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong()
+  private val ball = Part(0.08f, 0.08f, 0.08f, 0f, 0f, 0f, BALL, flat = true)
+
+  // Per frame: which agent sits at each desk and office.
+  private val deskStatus = arrayOfNulls<String>(OfficeWorld.DESKS)
+  private val cabinetOwner = arrayOfNulls<Walker>(OfficeWorld.CABINETS)
+  private val items = ArrayList<DrawItem>()
+  private var itemCount = 0
 
   init {
     backdrop = record { canvas -> for (part in OfficeScenery.backdrop()) drawBox(canvas, part) }
     furniturePictures = furniture.map { item -> record { canvas -> for (part in item.parts) drawBox(canvas, part) } }
     furnitureDepths = FloatArray(furniture.size) { depth(furniture[it].ax, furniture[it].ay, furniture[it].az) }
+    handPaint.strokeWidth = 0.05f * scale
   }
 
   private fun record(draw: (Canvas) -> Unit): Picture {
@@ -156,20 +210,16 @@ class OfficeRenderer(val width: Int, val height: Int) {
     return height / 2f - (dx * UP[0] + dy * UP[1] + dz * UP[2]) * scale
   }
 
-  /** Applies the current walker transform (limb swing, alert spin, tilt, bob, heading, position). */
+  /** Applies the current walker transform (scale, limb swing, tilt, bob, heading, position). */
   private fun place(x0: Float, y0: Float, z0: Float, out: FloatArray, o: Int) {
-    var x = x0
-    var y = y0
-    var z = z0
+    var x = x0 * k
+    var y = y0 * k
+    var z = z0 * k
     if (hasLimb) {
-      val ly = y - limbPivot
-      y = limbPivot + ly * limbCos - z * limbSin
+      val pivot = limbPivot * k
+      val ly = y - pivot
+      y = pivot + ly * limbCos - z * limbSin
       z = ly * limbSin + z * limbCos
-    }
-    if (hasSpin) {
-      val rx = x * spinCos + z * spinSin
-      z = -x * spinSin + z * spinCos
-      x = rx
     }
     val ty = y * tiltCos - z * tiltSin + bob
     val tz = y * tiltSin + z * tiltCos
@@ -252,34 +302,27 @@ class OfficeRenderer(val width: Int, val height: Int) {
     limbSin = sin(angle)
   }
 
-  private fun drawWalker(canvas: Canvas, sim: OfficeSim, walker: Walker, selected: Boolean) {
-    sim.pose(walker, pose)
-    val (hair, shirt) = OfficeWorld.colors(walker.id).let { it[0] to it[1] }
-    val offline = walker.status == "disconnected"
+  /** Draws one character, with whatever it holds, using the pose already in [pose]. */
+  private fun drawFigure(canvas: Canvas, x: Float, z: Float, heading: Float, hair: Int, shirt: Int, offline: Boolean) {
     fun tint(color: Int) = if (offline) mix(color, OFFLINE, 0.65f) else color
-
-    drawDisc(canvas, walker.px, walker.pz, 0.32f, Color.BLACK, 46)
-    if (selected) drawDisc(canvas, walker.px, walker.pz, 0.55f, RING, 140)
-
-    wx = walker.px
-    wz = walker.pz
-    headingCos = cos(walker.heading)
-    headingSin = sin(walker.heading)
+    wx = x
+    wz = z
+    headingCos = cos(heading)
+    headingSin = sin(heading)
     tiltCos = cos(pose.tilt)
     tiltSin = sin(pose.tilt)
     bob = pose.bob
-    hasSpin = false
     transformed = true
-
-    for (i in WALKER_BLOCKS.indices) {
-      val block = WALKER_BLOCKS[i]
+    val count = blocks.size
+    for (i in 0 until count) {
+      val block = blocks[i]
       setLimb(block.slot)
       place(block.part.x, block.part.y, block.part.z, tmp, 0)
       blockDepth[i] = depth(tmp[0], tmp[1], tmp[2])
       blockOrder[i] = i
     }
-    // Insertion sort, far to near; there are only a dozen blocks.
-    for (i in 1 until blockOrder.size) {
+    // Insertion sort, far to near; there are only a couple of dozen blocks.
+    for (i in 1 until count) {
       val current = blockOrder[i]
       var j = i - 1
       while (j >= 0 && blockDepth[blockOrder[j]] > blockDepth[current]) {
@@ -288,8 +331,8 @@ class OfficeRenderer(val width: Int, val height: Int) {
       }
       blockOrder[j + 1] = current
     }
-    for (index in blockOrder) {
-      val block = WALKER_BLOCKS[index]
+    for (o in 0 until count) {
+      val block = blocks[blockOrder[o]]
       setLimb(block.slot)
       val color = when (block.tint) {
         Tint.SHIRT -> tint(shirt)
@@ -297,62 +340,165 @@ class OfficeRenderer(val width: Int, val height: Int) {
         Tint.HAIR -> tint(hair)
         Tint.LEGS -> tint(LEGS)
         Tint.EYES -> EYES
+        Tint.FIXED -> block.part.color
       }
       drawBox(canvas, block.part, color)
     }
-    if (walker.status == "waiting") {
-      hasLimb = false
-      hasSpin = true
-      spinCos = cos(pose.alertSpin)
-      spinSin = sin(pose.alertSpin)
-      drawBox(canvas, Part(ALERT_TOP.w, ALERT_TOP.h, ALERT_TOP.d, 0f, pose.alertY + 0.06f, 0f, ALERT, true))
-      drawBox(canvas, Part(ALERT_DOT.w, ALERT_DOT.h, ALERT_DOT.d, 0f, pose.alertY - 0.18f, 0f, ALERT, true))
-      hasSpin = false
-    }
     hasLimb = false
     transformed = false
+    k = 1f
   }
 
-  private val drawOrder = ArrayList<Any>()
-  private val drawDepth = HashMap<Any, Float>()
+  private fun drawWalker(canvas: Canvas, sim: OfficeSim, walker: Walker, selected: Boolean) {
+    sim.pose(walker, pose)
+    val colors = OfficeWorld.colors(walker.id)
+    drawDisc(canvas, walker.px, walker.pz, 0.32f, Color.BLACK, 46)
+    if (selected) drawDisc(canvas, walker.px, walker.pz, 0.55f, RING, 150)
+    if (walker.status == "waiting") {
+      val pulse = (sin(sim.time * 5f) + 1f) / 2f
+      drawDisc(canvas, walker.px, walker.pz, 0.45f + pulse * 0.25f, ALERT, (90 + pulse * 90).roundToInt())
+    }
+    blocks.clear()
+    blocks.addAll(BODY_BLOCKS)
+    if (!walker.walking && walker.status == "idle") {
+      when (walker.activity) {
+        Activity.COFFEE -> blocks.addAll(CUP)
+        Activity.PINGPONG -> blocks.addAll(PADDLE)
+        Activity.READ -> blocks.addAll(BOOK)
+        else -> Unit
+      }
+    }
+    k = 1f
+    drawFigure(canvas, walker.px, walker.pz, walker.heading, colors[0], colors[1], walker.status == "disconnected")
+  }
+
+  private fun drawMini(canvas: Canvas, sim: OfficeSim, owner: Walker, index: Int) {
+    val seat = OfficeWorld.miniSeat(owner.cabinet, index)
+    val t = sim.time * 18f + index * 1.7f
+    pose.legLeft = (-PI / 2).toFloat()
+    pose.legRight = (-PI / 2).toFloat()
+    pose.armLeft = -1.15f + sin(t) * 0.12f
+    pose.armRight = -1.15f + sin(t + PI.toFloat()) * 0.12f
+    pose.bob = 0f
+    pose.tilt = 0f
+    blocks.clear()
+    blocks.addAll(BODY_BLOCKS)
+    blocks.addAll(MINI_DESK)
+    k = MINI_SCALE
+    val shirt = OfficeWorld.colors(owner.id)[1]
+    drawFigure(canvas, seat.x, seat.z, PI.toFloat(), OfficeWorld.hair(index + 1), mix(shirt, Color.WHITE, 0.35f), false)
+  }
+
+  private fun drawBall(canvas: Canvas, time: Float) {
+    val u = (sin(time * 2.4f) + 1f) / 2f
+    val x = -2.65f + u * 2.3f
+    val y = 0.84f + abs(sin(time * 4.8f)) * 0.32f
+    drawDisc(canvas, x, 5.4f, 0.05f, Color.BLACK, 40)
+    drawBox(canvas, Part(ball.w, ball.h, ball.d, x, y, 5.4f, BALL, true))
+  }
+
+  private fun drawClock(canvas: Canvas) {
+    val now = System.currentTimeMillis() + zoneOffsetMs
+    val minutes = (now / 60000.0) % 60.0
+    val hours = (now / 3600000.0) % 12.0
+    val cx = projectX(OfficeScenery.WALL_X, OfficeScenery.CLOCK_Y, OfficeScenery.CLOCK_Z)
+    val cy = projectY(OfficeScenery.WALL_X, OfficeScenery.CLOCK_Y, OfficeScenery.CLOCK_Z)
+    for ((angle, length) in listOf(hours / 12.0 * 2 * PI to 0.18f, minutes / 60.0 * 2 * PI to 0.28f)) {
+      // On the left wall, facing +x, the clock's right is towards -z.
+      val y = OfficeScenery.CLOCK_Y + cos(angle).toFloat() * length
+      val z = OfficeScenery.CLOCK_Z - sin(angle).toFloat() * length
+      canvas.drawLine(cx, cy, projectX(OfficeScenery.WALL_X, y, z), projectY(OfficeScenery.WALL_X, y, z), handPaint)
+    }
+  }
+
+  private fun drawRack(canvas: Canvas, rack: Int, time: Float) {
+    val tick = (time * 3f).toInt()
+    for ((i, led) in rackLeds[rack].withIndex()) {
+      val hash = ((i + rack * 31) * 2654435761L + tick * 40503L * (i % 5 + 1)) ushr 7
+      val on = (hash % 3L) != 0L
+      drawBox(canvas, led, if (on) LED_ON[i % LED_ON.size] else LED_OFF)
+    }
+  }
+
+  private fun addItem(type: Int, index: Int, depth: Float, walker: Walker? = null) {
+    if (itemCount == items.size) items.add(DrawItem())
+    val item = items[itemCount++]
+    item.type = type
+    item.index = index
+    item.depth = depth
+    item.walker = walker
+  }
 
   /** Draws the scene in world projection; the caller applies zoom and pan to the canvas. */
   fun draw(canvas: Canvas, sim: OfficeSim, selectedId: String) {
     canvas.drawPicture(backdrop)
-    val statuses = HashMap<Int, String>()
-    drawOrder.clear()
-    drawDepth.clear()
-    for (i in furniture.indices) {
-      drawOrder.add(i)
-      drawDepth[i] = furnitureDepths[i]
-    }
+    deskStatus.fill(null)
+    cabinetOwner.fill(null)
+    itemCount = 0
     for (walker in sim.walkers.values) {
-      statuses[walker.desk] = walker.status
-      drawOrder.add(walker)
-      drawDepth[walker] = depth(walker.px, 0.3f, walker.pz)
-    }
-    drawOrder.sortBy { drawDepth[it] ?: 0f }
-    for (item in drawOrder) {
-      if (item is Int) {
-        canvas.drawPicture(furniturePictures[item])
-        val desk = furniture[item].desk
-        if (desk >= 0) {
-          val color = OfficeScenery.screenColors[statuses[desk] ?: "empty"] ?: Color.BLACK
-          drawBox(canvas, OfficeScenery.screen(desk, color))
-        }
-      } else if (item is Walker) {
-        drawWalker(canvas, sim, item, item.id == selectedId)
+      if (walker.cabinet >= 0) {
+        cabinetOwner[walker.cabinet] = walker
+        deskStatus[walker.desk] = "idle"
+      } else {
+        deskStatus[walker.desk] = walker.status
       }
+      addItem(ITEM_WALKER, 0, depth(walker.px, 0.3f, walker.pz), walker)
+    }
+    for (cabinet in 0 until OfficeWorld.CABINETS) {
+      val owner = cabinetOwner[cabinet]
+      if (owner == null) {
+        drawBox(canvas, carpets[cabinet])
+        drawBox(canvas, signs[cabinet])
+        continue
+      }
+      val shirt = OfficeWorld.colors(owner.id)[1]
+      drawBox(canvas, carpets[cabinet], mix(OfficeScenery.carpet, shirt, 0.35f))
+      drawBox(canvas, signs[cabinet], shirt)
+      if (!owner.arrived) continue
+      for (i in 0 until min(owner.subagents, OfficeWorld.MINIS_PER_CABINET)) {
+        val seat = OfficeWorld.miniSeat(cabinet, i)
+        addItem(ITEM_MINI, i, depth(seat.x, 0.3f, seat.z), owner)
+      }
+    }
+    drawClock(canvas)
+    for (i in furniture.indices) addItem(ITEM_FURNITURE, i, furnitureDepths[i])
+    if (sim.pingPongPlayers() >= 2) addItem(ITEM_BALL, 0, depth(-1.5f, 0.9f, 5.4f))
+    items.subList(0, itemCount).sortBy { it.depth }
+    for (n in 0 until itemCount) {
+      val item = items[n]
+      when (item.type) {
+        ITEM_FURNITURE -> drawFurniture(canvas, item.index, sim)
+        ITEM_WALKER -> item.walker?.let { drawWalker(canvas, sim, it, it.id == selectedId) }
+        ITEM_MINI -> item.walker?.let { drawMini(canvas, sim, it, item.index) }
+        ITEM_BALL -> drawBall(canvas, sim.time)
+      }
+    }
+  }
+
+  private fun drawFurniture(canvas: Canvas, index: Int, sim: OfficeSim) {
+    canvas.drawPicture(furniturePictures[index])
+    val item = furniture[index]
+    when (item.kind) {
+      Kind.DESK -> {
+        val color = OfficeScenery.screenColors[deskStatus[item.index] ?: "empty"] ?: Color.BLACK
+        drawBox(canvas, deskScreens[item.index], color)
+      }
+      Kind.CABINET_DESK -> {
+        val status = cabinetOwner[item.index]?.status ?: "empty"
+        drawBox(canvas, cabinetScreens[item.index], OfficeScenery.screenColors[status] ?: Color.BLACK)
+      }
+      Kind.RACK -> drawRack(canvas, item.index, sim.time)
+      Kind.PLAIN -> Unit
     }
   }
 
   /** The agent under a point in unzoomed view coordinates. */
   fun pick(sim: OfficeSim, x: Float, y: Float): String? {
     var best: String? = null
-    var bestDistance = 0.11f * width
+    var bestDistance = 0.07f * width
     for (walker in sim.walkers.values) {
-      val dx = projectX(walker.px, 0.8f, walker.pz) - x
-      val dy = projectY(walker.px, 0.8f, walker.pz) - y
+      val dx = projectX(walker.px, 0.7f, walker.pz) - x
+      val dy = projectY(walker.px, 0.7f, walker.pz) - y
       val distance = sqrt(dx * dx + dy * dy)
       if (distance < bestDistance) {
         bestDistance = distance

@@ -6,7 +6,7 @@ import { View, type NativeSyntheticEvent, type ViewProps } from "react-native";
 import { clearOfficeLog, logOfficeStep, OFFICE_STABLE_MARK } from "./officeLog";
 import type { OfficeAgent } from "./officeSim";
 
-const ASPECT = 0.78;
+const ASPECT = 0.85;
 
 interface NativeOfficeProps extends ViewProps {
   readonly agentsJson: string;

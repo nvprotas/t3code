@@ -19,8 +19,8 @@ import org.json.JSONArray
 import kotlin.math.max
 import kotlin.math.min
 
-private const val MAX_ZOOM = 3.5f
-private const val LABEL_MAX_CHARS = 16
+private const val MAX_ZOOM = 5f
+private const val LABEL_MAX_CHARS = 14
 
 class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   private val onSelectAgent by EventDispatcher()
@@ -73,7 +73,14 @@ class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context,
     val agents = ArrayList<OfficeAgent>(array.length())
     for (i in 0 until array.length()) {
       val item = array.getJSONObject(i)
-      agents.add(OfficeAgent(item.getString("id"), item.optString("name"), item.optString("status", "idle")))
+      agents.add(
+        OfficeAgent(
+          item.getString("id"),
+          item.optString("name"),
+          item.optString("status", "idle"),
+          item.optInt("subagents", 0),
+        ),
+      )
     }
     sim.setAgents(agents)
     canvasView.invalidate()
@@ -146,11 +153,18 @@ class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context,
 private class OfficeCanvasView(context: Context, private val host: T3OfficeView) : View(context) {
   private val density = resources.displayMetrics.density
   private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-    textSize = 10f * density
+    textSize = 9f * density
     typeface = Typeface.DEFAULT_BOLD
     textAlign = Paint.Align.CENTER
   }
   private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val badgeText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    textSize = 13f * density
+    typeface = Typeface.DEFAULT_BOLD
+    textAlign = Paint.Align.CENTER
+    color = Color.WHITE
+  }
   private val pill = RectF()
 
   private val scaleDetector = ScaleGestureDetector(
@@ -218,23 +232,56 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
     renderer.draw(canvas, host.sim, host.selectedId)
     canvas.restore()
     for (walker in host.sim.walkers.values) {
-      val labelY = if (walker.status == "waiting") 2.15f else 1.6f
-      val x = renderer.projectX(walker.px, labelY, walker.pz) * host.zoom + host.panX
-      val y = renderer.projectY(walker.px, labelY, walker.pz) * host.zoom + host.panY
-      drawLabel(canvas, walker.name, x, y, walker.id == host.selectedId)
+      val x = renderer.projectX(walker.px, 1.45f, walker.pz) * host.zoom + host.panX
+      val y = renderer.projectY(walker.px, 1.45f, walker.pz) * host.zoom + host.panY
+      val waiting = walker.status == "waiting"
+      val top = drawLabel(canvas, walker.name, x, y, walker.id == host.selectedId, waiting)
+      if (waiting) drawAlert(canvas, x, top - 3f * density, host.sim.time)
+      if (walker.cabinet >= 0 && walker.subagents > 0) drawSubagents(canvas, renderer, walker)
     }
     host.frameDrawn()
   }
 
-  private fun drawLabel(canvas: Canvas, name: String, x: Float, y: Float, selected: Boolean) {
+  /** Draws the name tag with its bottom edge at y and returns its top edge. */
+  private fun drawLabel(canvas: Canvas, name: String, x: Float, y: Float, selected: Boolean, waiting: Boolean): Float {
     val text = if (name.length > LABEL_MAX_CHARS) name.take(LABEL_MAX_CHARS - 1) + "…" else name
     val textWidth = labelPaint.measureText(text)
-    val padX = 5f * density
-    val top = y - labelPaint.textSize - 5f * density
+    val padX = 4f * density
+    val top = y - labelPaint.textSize - 4f * density
     pill.set(x - textWidth / 2f - padX, top, x + textWidth / 2f + padX, y)
-    pillPaint.color = if (selected) Color.rgb(0xfa, 0xcc, 0x15) else Color.argb(150, 0, 0, 0)
-    canvas.drawRoundRect(pill, 6f * density, 6f * density, pillPaint)
+    pillPaint.color = when {
+      selected -> Color.rgb(0xfa, 0xcc, 0x15)
+      waiting -> Color.rgb(0xea, 0x58, 0x0c)
+      else -> Color.argb(150, 0, 0, 0)
+    }
+    canvas.drawRoundRect(pill, 5f * density, 5f * density, pillPaint)
     labelPaint.color = if (selected) Color.rgb(0x1f, 0x29, 0x37) else Color.WHITE
-    canvas.drawText(text, x, y - 4f * density, labelPaint)
+    canvas.drawText(text, x, y - 3.5f * density, labelPaint)
+    return top
+  }
+
+  /** A pulsing "!" bubble over an agent that needs an answer, drawn on top of everything. */
+  private fun drawAlert(canvas: Canvas, x: Float, bottom: Float, time: Float) {
+    val radius = (10f + 1.5f * kotlin.math.sin(time * 6f)) * density
+    val cy = bottom - radius
+    badgePaint.color = Color.WHITE
+    canvas.drawCircle(x, cy, radius + 2f * density, badgePaint)
+    badgePaint.color = Color.rgb(0xdc, 0x26, 0x26)
+    canvas.drawCircle(x, cy, radius, badgePaint)
+    canvas.drawText("!", x, cy + badgeText.textSize * 0.36f, badgeText)
+  }
+
+  /** How many subagents a thread runs, shown on its office's door sign. */
+  private fun drawSubagents(canvas: Canvas, renderer: OfficeRenderer, walker: Walker) {
+    val cx = OfficeWorld.cabinetX[walker.cabinet]
+    val x = renderer.projectX(cx, 2.72f, -6.9f) * host.zoom + host.panX
+    val y = renderer.projectY(cx, 2.72f, -6.9f) * host.zoom + host.panY
+    val text = "\u00d7" + walker.subagents
+    val textWidth = labelPaint.measureText(text)
+    pill.set(x - textWidth / 2f - 4f * density, y - 7f * density, x + textWidth / 2f + 4f * density, y + 7f * density)
+    pillPaint.color = Color.argb(200, 15, 23, 42)
+    canvas.drawRoundRect(pill, 5f * density, 5f * density, pillPaint)
+    labelPaint.color = Color.WHITE
+    canvas.drawText(text, x, y + labelPaint.textSize * 0.36f, labelPaint)
   }
 }
