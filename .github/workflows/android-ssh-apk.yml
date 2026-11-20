@@ -150,25 +150,25 @@ jobs:
         working-directory: apps/mobile
         run: pnpm exec expo prebuild --clean --platform android --no-install
 
-      - name: SSH and agent notification unit tests
+      # The native unit tests only cover these two modules, so a push that leaves
+      # them untouched skips the tests; manual runs and new branches always run them.
+      - name: Detect native module changes
+        id: native
         if: ${{ !cancelled() }}
-        working-directory: apps/mobile/android
+        env:
+          BEFORE: ${{ github.event.before }}
         run: |
-          set -o pipefail
-          ./gradlew :t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64 --max-workers=4 2>&1 | tee "$RUNNER_TEMP/native-ssh-tests.log"
+          paths="apps/mobile/modules/t3-ssh apps/mobile/modules/t3-agent-notifications"
+          if [ "$GITHUB_EVENT_NAME" = push ] && git fetch --no-tags --depth=1 origin "$BEFORE" 2>/dev/null \
+            && git diff --quiet FETCH_HEAD HEAD -- $paths; then
+            echo "tests=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tests=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Upload SSH test results
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: t3code-android-ssh-tests
-          path: |
-            ${{ runner.temp }}/native-ssh-tests.log
-            apps/mobile/modules/t3-ssh/android/build/reports/tests/testDebugUnitTest/
-            apps/mobile/modules/t3-agent-notifications/android/build/reports/tests/testDebugUnitTest/
-          if-no-files-found: warn
-          retention-days: 14
-
+      # One Gradle invocation so the daemon starts and the project configures once.
+      # Gradle installs the NDK fresh on every runner, so ccache must hash the
+      # compiler's content; its default mtime check missed nearly every object.
       - name: Build release APK
         if: ${{ !cancelled() }}
         working-directory: apps/mobile
@@ -177,12 +177,34 @@ jobs:
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
           CCACHE_BASEDIR: ${{ github.workspace }}
           CCACHE_NOHASHDIR: "true"
+          CCACHE_COMPILERCHECK: content
+          NATIVE_TESTS: ${{ steps.native.outputs.tests }}
         run: |
+          set -o pipefail
           cd android
-          ./gradlew app:assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=4 --build-cache
-          ccache --show-stats
+          tasks="app:assembleRelease"
+          if [ "$NATIVE_TESTS" = true ]; then
+            tasks=":t3-ssh:testDebugUnitTest :t3-agent-notifications:testDebugUnitTest $tasks --continue"
+          fi
+          # A failed test still fails the step, after the APK is copied for device testing.
+          status=0
+          ./gradlew $tasks -PreactNativeArchitectures=arm64-v8a -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64 --max-workers=4 --build-cache 2>&1 | tee "$RUNNER_TEMP/gradle-build.log" || status=$?
+          ccache --show-stats -v
           mkdir -p ../build-output
           cp app/build/outputs/apk/release/app-release.apk ../build-output/t3code-ssh.apk
+          exit "$status"
+
+      - name: Upload SSH test results
+        if: ${{ !cancelled() && steps.native.outputs.tests == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-android-ssh-tests
+          path: |
+            ${{ runner.temp }}/gradle-build.log
+            apps/mobile/modules/t3-ssh/android/build/reports/tests/testDebugUnitTest/
+            apps/mobile/modules/t3-agent-notifications/android/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 14
 
       # Without these secrets the APK keeps Expo's per-build debug signature,
       # which cannot update an earlier install in place.
