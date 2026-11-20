@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useGT } from "gt-react-native";
-import { lazy, Suspense, use } from "react";
+import { lazy, Suspense, use, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
@@ -10,6 +10,8 @@ import { steadyNavigationThreadShellsAtom } from "../../state/threads";
 import { useWorkspaceEnvironments } from "../../state/workspace";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
+import { OfficeDebugCard } from "./OfficeDebugCard";
+import { officeCrashedLastTime, readOfficeLog } from "./officeLog";
 import { OfficeRoom } from "./OfficeRoom";
 import { OfficeSceneFailure } from "./OfficeSceneFailure";
 import { buildOfficeGroups } from "./officeStatus";
@@ -21,6 +23,11 @@ const OfficeScene = lazy(() =>
 
 export function OfficeScreen() {
   const gt = useGT();
+  const [startup] = useState(() => {
+    const log = readOfficeLog();
+    return { log, crashed: officeCrashedLastTime(log) };
+  });
+  const [started, setStarted] = useState(!startup.crashed);
   const insets = useSafeAreaInsets();
   const tabActivity = use(NativeWorkspaceTabActivityContext);
   const headerOnly = tabActivity?.headerOnly === true;
@@ -43,23 +50,32 @@ export function OfficeScreen() {
           contentContainerClassName="gap-6 px-5 pt-4"
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
         >
-          <RenderErrorBoundary renderFallback={(failure) => <OfficeSceneFailure {...failure} />}>
-            <Suspense fallback={null}>
-              <OfficeScene
-                agents={agents}
-                active={tabActivity?.active ?? true}
-                onOpenAgent={(id) => {
-                  const row = rows.find((candidate) => String(candidate.thread.id) === id);
-                  if (row) {
-                    openThread({
-                      environmentId: String(row.thread.environmentId),
-                      threadId: id,
-                    });
-                  }
-                }}
-              />
-            </Suspense>
-          </RenderErrorBoundary>
+          {started ? null : (
+            <OfficeDebugCard
+              log={startup.log}
+              crashed={startup.crashed}
+              onStart={() => setStarted(true)}
+            />
+          )}
+          {started ? (
+            <RenderErrorBoundary renderFallback={(failure) => <OfficeSceneFailure {...failure} />}>
+              <Suspense fallback={null}>
+                <OfficeScene
+                  agents={agents}
+                  active={tabActivity?.active ?? true}
+                  onOpenAgent={(id) => {
+                    const row = rows.find((candidate) => String(candidate.thread.id) === id);
+                    if (row) {
+                      openThread({
+                        environmentId: String(row.thread.environmentId),
+                        threadId: id,
+                      });
+                    }
+                  }}
+                />
+              </Suspense>
+            </RenderErrorBoundary>
+          ) : null}
           {groups.map((group) => (
             <OfficeRoom
               key={group.environmentId}

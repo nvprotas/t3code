@@ -18,6 +18,7 @@ import {
   WebGLRenderer,
 } from "three";
 
+import { logOfficeStep } from "./officeLog";
 import type { OfficeStatus } from "./officeStatus";
 import {
   agentColors,
@@ -221,6 +222,7 @@ export function createOfficeEngine(gl: ExpoWebGLRenderingContext) {
     antialias: false,
     powerPreference: "high-performance",
   });
+  logOfficeStep("renderer created");
   renderer.setPixelRatio(1);
   renderer.setSize(width, height, false);
   renderer.setClearColor("#1b1f27");
@@ -242,6 +244,7 @@ export function createOfficeEngine(gl: ExpoWebGLRenderingContext) {
   });
 
   const room = new Mesh(boxes(roomParts()), material);
+  logOfficeStep("room built");
   room.matrixAutoUpdate = false;
   scene.add(room);
 
@@ -457,14 +460,18 @@ export function createOfficeEngine(gl: ExpoWebGLRenderingContext) {
   }
 
   /** Advances the scene; draws only when something changed. */
+  let firstDraw = false;
   function frame(dt: number) {
     clock += dt;
     let moving = false;
     for (const walker of walkers.values()) moving = stepWalker(walker, dt) || moving;
     if (!moving && !dirty) return;
     dirty = false;
+    if (!firstDraw) logOfficeStep("first draw");
     renderer.render(scene, camera);
     gl.endFrameEXP();
+    if (!firstDraw) logOfficeStep("first draw done");
+    firstDraw = true;
   }
 
   const projected = new Vector3();
