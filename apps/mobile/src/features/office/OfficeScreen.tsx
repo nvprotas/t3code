@@ -10,6 +10,7 @@ import { steadyNavigationThreadShellsAtom } from "../../state/threads";
 import { useWorkspaceEnvironments } from "../../state/workspace";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
+import { OfficeAgentCard } from "./OfficeAgentCard";
 import { OfficeDebugCard } from "./OfficeDebugCard";
 import { officeCrashedLastTime, readOfficeLog } from "./officeLog";
 import { OfficeRoom } from "./OfficeRoom";
@@ -28,6 +29,8 @@ export function OfficeScreen() {
     return { log, crashed: officeCrashedLastTime(log) };
   });
   const [started, setStarted] = useState(!startup.crashed);
+  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [scrollLocked, setScrollLocked] = useState(false);
   const insets = useSafeAreaInsets();
   const tabActivity = use(NativeWorkspaceTabActivityContext);
   const headerOnly = tabActivity?.headerOnly === true;
@@ -36,7 +39,15 @@ export function OfficeScreen() {
   const threads = useAtomValue(steadyNavigationThreadShellsAtom);
   const groups = buildOfficeGroups(environments, threads);
   const rows = groups.flatMap((group) => group.rows);
-  const agents = rows.map((row) => ({ id: String(row.thread.id), status: row.status }));
+  const agents = rows.map((row) => ({
+    id: String(row.thread.id),
+    name: row.thread.title,
+    status: row.status,
+  }));
+  const selectedGroup = groups.find((group) =>
+    group.rows.some((row) => String(row.thread.id) === selectedId),
+  );
+  const selected = selectedGroup?.rows.find((row) => String(row.thread.id) === selectedId);
   const openThread = (target: { environmentId: string; threadId: string }) =>
     selectDetail({ name: "Thread", params: target });
 
@@ -45,6 +56,7 @@ export function OfficeScreen() {
       {headerOnly ? null : (
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"
+          scrollEnabled={!scrollLocked}
           showsVerticalScrollIndicator={false}
           className="flex-1"
           contentContainerClassName="gap-6 px-5 pt-4"
@@ -63,18 +75,26 @@ export function OfficeScreen() {
                 <OfficeScene
                   agents={agents}
                   active={tabActivity?.active ?? true}
-                  onOpenAgent={(id) => {
-                    const row = rows.find((candidate) => String(candidate.thread.id) === id);
-                    if (row) {
-                      openThread({
-                        environmentId: String(row.thread.environmentId),
-                        threadId: id,
-                      });
-                    }
-                  }}
+                  selectedId={selectedId}
+                  onSelectAgent={setSelectedId}
+                  onLockScroll={setScrollLocked}
                 />
               </Suspense>
             </RenderErrorBoundary>
+          ) : null}
+          {selected && selectedGroup ? (
+            <OfficeAgentCard
+              thread={selected.thread}
+              status={selected.status}
+              environment={selectedGroup.label}
+              onOpen={() =>
+                openThread({
+                  environmentId: String(selected.thread.environmentId),
+                  threadId: String(selected.thread.id),
+                })
+              }
+              onClose={() => setSelectedId(undefined)}
+            />
           ) : null}
           {groups.map((group) => (
             <OfficeRoom

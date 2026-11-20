@@ -11,6 +11,20 @@ export interface Poly {
   readonly opacity?: number;
 }
 
+/** A name tag in unscaled view coordinates; the scene keeps tags the same size while zoomed. */
+export interface Label {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly text: string;
+  readonly selected: boolean;
+}
+
+export interface OfficeFrame {
+  readonly items: readonly Item[];
+  readonly labels: readonly Label[];
+}
+
 /** One drawable block; blocks are painted far to near. */
 export interface Item {
   readonly id: string;
@@ -77,7 +91,7 @@ function shade(hex: string, normal: Vec) {
 
 export interface OfficeRenderer {
   readonly height: number;
-  frame(sim: OfficeSim): Item[];
+  frame(sim: OfficeSim, selectedId: string | undefined): OfficeFrame;
   pick(sim: OfficeSim, x: number, y: number): string | undefined;
 }
 
@@ -145,7 +159,7 @@ export function createOfficeRenderer(width: number): OfficeRenderer {
     return item;
   }
 
-  function walkerItem(walker: Walker, pose: Pose): Item {
+  function walkerItem(walker: Walker, pose: Pose, selected: boolean): Item {
     const { hair, shirt } = agentColors(walker.id);
     const offline = walker.status === "disconnected";
     const tint = (color: string) => (offline ? mix(color, OFFLINE, 0.65) : color);
@@ -157,9 +171,9 @@ export function createOfficeRenderer(width: number): OfficeRenderer {
       const y = p[1] * cosTilt - p[2] * sinTilt + pose.bob;
       const z = p[1] * sinTilt + p[2] * cosTilt;
       return [
-        p[0] * cosHeading + z * sinHeading + walker.x,
+        p[0] * cosHeading + z * sinHeading + walker.px,
         y,
-        -p[0] * sinHeading + z * cosHeading + walker.z,
+        -p[0] * sinHeading + z * cosHeading + walker.pz,
       ];
     };
     const swing = (pivotY: number, angle: number) => {
@@ -216,9 +230,9 @@ export function createOfficeRenderer(width: number): OfficeRenderer {
     }
     const polys: Poly[] = [];
     const shadow: Vec[] = Array.from({ length: 12 }, (_, i) => [
-      walker.x + Math.cos((i / 12) * Math.PI * 2) * 0.32,
+      walker.px + Math.cos((i / 12) * Math.PI * 2) * 0.32,
       0.012,
-      walker.z + Math.sin((i / 12) * Math.PI * 2) * 0.32,
+      walker.pz + Math.sin((i / 12) * Math.PI * 2) * 0.32,
     ]);
     polys.push({
       points: shadow
@@ -231,6 +245,24 @@ export function createOfficeRenderer(width: number): OfficeRenderer {
       fill: "#000000",
       opacity: 0.18,
     });
+    if (selected) {
+      const ring: Vec[] = Array.from({ length: 20 }, (_, i) => [
+        walker.px + Math.cos((i / 20) * Math.PI * 2) * 0.55,
+        0.014,
+        walker.pz + Math.sin((i / 20) * Math.PI * 2) * 0.55,
+      ]);
+      polys.push({
+        points: ring
+          .map((p) =>
+            project(p)
+              .map((v) => v.toFixed(1))
+              .join(","),
+          )
+          .join(" "),
+        fill: "#facc15",
+        opacity: 0.55,
+      });
+    }
     const ordered = blocks
       .map((block) => ({ block, depth: dot(block.transform(block.part.at), TO_CAMERA) }))
       .sort((a, b) => a.depth - b.depth);
@@ -258,17 +290,20 @@ export function createOfficeRenderer(width: number): OfficeRenderer {
     }
     return {
       id: `walker-${walker.id}`,
-      depth: dot([walker.x, 0.3, walker.z], TO_CAMERA),
+      depth: dot([walker.px, 0.3, walker.pz], TO_CAMERA),
       polys,
     };
   }
 
-  function frame(sim: OfficeSim) {
+  function frame(sim: OfficeSim, selectedId: string | undefined): OfficeFrame {
     const statuses = new Map<number, OfficeStatus>();
     const items: Item[] = [];
+    const labels: Label[] = [];
     for (const walker of sim.walkers.values()) {
       statuses.set(walker.desk, walker.status);
-      items.push(walkerItem(walker, sim.pose(walker)));
+      items.push(walkerItem(walker, sim.pose(walker), walker.id === selectedId));
+      const [x, y] = project([walker.px, walker.status === "waiting" ? 2.15 : 1.6, walker.pz]);
+      labels.push({ id: walker.id, x, y, text: walker.name, selected: walker.id === selectedId });
     }
     for (const item of staticItems) {
       if (!item.id.startsWith("desk-")) {
@@ -279,14 +314,14 @@ export function createOfficeRenderer(width: number): OfficeRenderer {
       items.push({ ...deskItem(index, statuses.get(index) ?? "empty"), depth: item.depth });
     }
     items.sort((a, b) => a.depth - b.depth);
-    return [backdrop, ...items];
+    return { items: [backdrop, ...items], labels };
   }
 
   function pick(sim: OfficeSim, x: number, y: number) {
     let best: string | undefined;
     let bestDistance = 0.11 * width;
     for (const walker of sim.walkers.values()) {
-      const [px, py] = project([walker.x, 0.8, walker.z]);
+      const [px, py] = project([walker.px, 0.8, walker.pz]);
       const distance = Math.hypot(px - x, py - y);
       if (distance < bestDistance) {
         bestDistance = distance;

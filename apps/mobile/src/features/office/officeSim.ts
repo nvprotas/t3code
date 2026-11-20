@@ -9,11 +9,13 @@ import {
 
 export interface OfficeAgent {
   readonly id: string;
+  readonly name: string;
   readonly status: OfficeStatus;
 }
 
 export interface Walker {
   readonly id: string;
+  name: string;
   readonly phase: number;
   status: OfficeStatus;
   desk: number;
@@ -24,6 +26,12 @@ export interface Walker {
   pause: number;
   walking: boolean;
   seated: boolean;
+  /** Sidestep that keeps walkers from meeting head-on; the drawn position is (px, pz). */
+  offX: number;
+  offZ: number;
+  waited: number;
+  px: number;
+  pz: number;
 }
 
 export interface Pose {
@@ -42,6 +50,11 @@ const FACING_DESK = Math.PI;
 // Turned towards the camera, so a waiting agent waves at you.
 const FACING_VIEWER = Math.atan2(11, 13);
 const DOOR: FloorPoint = { x: -6.8, z: -1.25 };
+// Everyone steps to the same hand, so two walkers on one lane pass instead of colliding.
+const SIDESTEP = 0.34;
+const LOOK_AHEAD = 1.1;
+const PERSONAL_SPACE = 0.5;
+const MAX_WAIT = 1.5;
 
 /** Who is where in the office; no rendering, so it can be stepped and tested on its own. */
 export function createOfficeSim() {
@@ -87,6 +100,12 @@ export function createOfficeSim() {
           pause: Math.random() * 3,
           walking: false,
           seated: false,
+          name: agent.name,
+          offX: 0,
+          offZ: 0,
+          waited: 0,
+          px: start.x,
+          pz: start.z,
         };
         walkers.set(agent.id, walker);
         retarget(walker);
@@ -95,35 +114,72 @@ export function createOfficeSim() {
         retarget(walker);
       }
     }
+    for (const agent of next.values()) {
+      const walker = walkers.get(agent.id);
+      if (walker) walker.name = agent.name;
+    }
     populated = true;
   }
 
   function stepWalker(walker: Walker, dt: number) {
     const target = walker.route[0];
     let targetHeading = walker.heading;
+    let sidestepX = 0;
+    let sidestepZ = 0;
+    let blocked = false;
     if (target) {
       const dx = target.x - walker.x;
       const dz = target.z - walker.z;
       const distance = Math.hypot(dx, dz);
-      const step = WALK_SPEED * dt;
-      if (distance <= step) {
-        walker.x = target.x;
-        walker.z = target.z;
-        walker.route.shift();
+      if (distance > 1e-3) {
+        const dirX = dx / distance;
+        const dirZ = dz / distance;
+        for (const other of walkers.values()) {
+          if (other === walker) continue;
+          const ox = other.px - walker.px;
+          const oz = other.pz - walker.pz;
+          const ahead = ox * dirX + oz * dirZ;
+          if (ahead <= 0 || ahead > LOOK_AHEAD) continue;
+          const side = ox * dirZ - oz * dirX;
+          if (Math.abs(side) > PERSONAL_SPACE + 0.1) continue;
+          sidestepX = dirZ * SIDESTEP;
+          sidestepZ = -dirX * SIDESTEP;
+          if (ahead < PERSONAL_SPACE && Math.abs(side) < PERSONAL_SPACE * 0.6) blocked = true;
+        }
+      }
+      if (blocked && walker.waited < MAX_WAIT) {
+        walker.waited += dt;
       } else {
-        walker.x += (dx / distance) * step;
-        walker.z += (dz / distance) * step;
+        blocked = false;
+        walker.waited = 0;
+        const step = WALK_SPEED * dt;
+        if (distance <= step) {
+          walker.x = target.x;
+          walker.z = target.z;
+          walker.route.shift();
+        } else {
+          walker.x += (dx / distance) * step;
+          walker.z += (dz / distance) * step;
+        }
       }
       if (distance > 1e-3) targetHeading = Math.atan2(dx, dz);
-    } else if (walker.status === "idle") {
-      walker.pause -= dt;
-      if (walker.pause <= 0) {
-        walker.pause = 4 + Math.random() * 6;
-        retarget(walker);
+    } else {
+      walker.waited = 0;
+      if (walker.status === "idle") {
+        walker.pause -= dt;
+        if (walker.pause <= 0) {
+          walker.pause = 4 + Math.random() * 6;
+          retarget(walker);
+        }
       }
     }
+    const ease = Math.min(1, dt * 6);
+    walker.offX += (sidestepX - walker.offX) * ease;
+    walker.offZ += (sidestepZ - walker.offZ) * ease;
+    walker.px = walker.x + walker.offX;
+    walker.pz = walker.z + walker.offZ;
     const seat = seatPosition(walker.desk);
-    walker.walking = target !== undefined;
+    walker.walking = target !== undefined && !blocked;
     walker.seated =
       !target &&
       (walker.status === "working" || walker.status === "disconnected") &&
