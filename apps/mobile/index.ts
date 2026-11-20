@@ -5,7 +5,6 @@ import { installGlobalErrorCapture, startupFailure, withStartupGuard } from "./s
 
 // App modules load inside try/catch so a load-time crash shows its error instead of a blank screen.
 try {
-  /* eslint-disable @typescript-eslint/no-require-imports */
   require("./src/features/development/render-counter-entry");
   require("./src/features/development/behavior-probe-entry");
   // Crash reporting loads preferences, which can load GT and capture Hermes's Intl constructors.

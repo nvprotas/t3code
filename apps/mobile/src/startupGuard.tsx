@@ -1,6 +1,11 @@
 import { Component, useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { Pressable, ScrollView, Share, Text, View } from "react-native";
 
+// Deliberately outside gt(): this screen must work when the i18n stack itself fails to load.
+const TITLE = "T3 Code hit an error";
+const SHARE = "Share log";
+const DISMISS = "Dismiss";
+
 const errors: string[] = [];
 const listeners = new Set<() => void>();
 
@@ -38,7 +43,7 @@ function ErrorScreen(props: {
   const text = props.reports.join("\n\n");
   return (
     <View style={{ flex: 1, backgroundColor: "#1b1b1b", paddingTop: 56, padding: 16, gap: 12 }}>
-      <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>T3 Code hit an error</Text>
+      <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>{TITLE}</Text>
       <ScrollView style={{ flex: 1 }}>
         <Text selectable style={{ color: "#fca5a5", fontSize: 12, fontFamily: "monospace" }}>
           {text.slice(0, 20000)}
@@ -49,14 +54,14 @@ function ErrorScreen(props: {
           onPress={() => void Share.share({ message: text })}
           style={{ backgroundColor: "#3b82f6", padding: 12, borderRadius: 10 }}
         >
-          <Text style={{ color: "#fff", fontWeight: "700" }}>Share log</Text>
+          <Text style={{ color: "#fff", fontWeight: "700" }}>{SHARE}</Text>
         </Pressable>
         {props.onDismiss ? (
           <Pressable
             onPress={props.onDismiss}
             style={{ backgroundColor: "#374151", padding: 12, borderRadius: 10 }}
           >
-            <Text style={{ color: "#fff", fontWeight: "700" }}>Dismiss</Text>
+            <Text style={{ color: "#fff", fontWeight: "700" }}>{DISMISS}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -65,14 +70,14 @@ function ErrorScreen(props: {
 }
 
 class RootBoundary extends Component<{ readonly children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
+  override state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
-  componentDidCatch(error: unknown, info: { componentStack?: string | null }) {
+  override componentDidCatch(error: unknown, info: { componentStack?: string | null }) {
     recordStartupError(error, `render error\n${info.componentStack ?? ""}`);
   }
-  render() {
+  override render() {
     return this.state.failed ? <ErrorScreen reports={errors} /> : this.props.children;
   }
 }
