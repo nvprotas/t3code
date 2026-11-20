@@ -24,11 +24,7 @@ export function OfficeScene(props: {
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes thread state into the GL scene
   useEffect(() => {
-    try {
-      engine?.setAgents(props.agents);
-    } catch (error) {
-      setFailure({ error });
-    }
+    engine?.setAgents(props.agents);
   }, [engine, props.agents]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs the render loop only while the tab is visible
