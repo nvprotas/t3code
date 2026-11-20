@@ -47,20 +47,22 @@ export function OfficeScene(props: {
   readonly onOpenThread: (target: OfficeSceneTarget) => void;
   readonly onFailed: () => void;
 }) {
-  const view = useRef<WebView>(null);
+  const view = useRef<WebView<object>>(null);
   const [ready, setReady] = useState(false);
   const appActive = useAppActive();
+  // Only the idle cut-off reads the clock, so the mount time is close enough.
+  const [openedAt] = useState(() => Date.now());
   const { environments, threads, projects, offlineLabel } = props;
   const { targets, json } = useMemo(() => {
     const built = buildOfficeSnapshot({
       environments,
       threads,
       projects,
-      now: Date.now(),
+      now: openedAt,
       offlineLabel,
     });
     return { targets: built.targets, json: JSON.stringify(built.snapshot) };
-  }, [environments, threads, projects, offlineLabel]);
+  }, [environments, threads, projects, offlineLabel, openedAt]);
   const paused = !(props.visible && appActive);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes thread snapshots into the WebView scene once it has loaded
