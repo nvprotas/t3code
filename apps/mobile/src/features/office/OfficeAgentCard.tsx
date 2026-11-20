@@ -62,7 +62,7 @@ export function OfficeAgentCard(props: {
       </View>
       <View className="flex-row gap-3">
         <Stat label={gt("Status")} value={status} />
-        <Stat label={gt("Provider")} value={thread.runtime?.providerName ?? "—"} />
+        <Stat label={gt("Provider")} value={thread.runtime?.providerName ?? gt("Unknown")} />
       </View>
       <View className="flex-row gap-3">
         <Stat label={gt("Items")} value={String(thread.itemCount)} />

@@ -91,30 +91,27 @@ export function OfficeScene(props: {
   });
   const reset = useEffectEvent(() => commit(FIT));
 
-  const gesture = useMemo(
-    () =>
-      Gesture.Simultaneous(
-        // oxlint-disable-next-line react/capitalized-calls -- gesture factory, not a component
-        Gesture.Pinch()
-          .runOnJS(true)
-          .onStart(() => beginGesture())
-          .onUpdate((event) => pinch(event.scale, event.focalX, event.focalY))
-          .onFinalize(() => endGesture()),
-        // oxlint-disable-next-line react/capitalized-calls -- gesture factory, not a component
-        Gesture.Pan()
-          .enabled(zoomed)
-          .maxPointers(1)
-          .runOnJS(true)
-          .onStart(() => beginGesture())
-          .onUpdate((event) => pan(event.translationX, event.translationY))
-          .onFinalize(() => endGesture()),
-        // oxlint-disable-next-line react/capitalized-calls -- gesture factory, not a component
-        Gesture.Tap()
-          .numberOfTaps(2)
-          .runOnJS(true)
-          .onEnd(() => reset()),
-      ),
-    [zoomed],
+  // oxlint-disable-next-line react/capitalized-calls -- gesture factory, not a component
+  const gesture = Gesture.Simultaneous(
+    // oxlint-disable-next-line react/capitalized-calls -- gesture factory, not a component
+    Gesture.Pinch()
+      .runOnJS(true)
+      .onStart(() => beginGesture())
+      .onUpdate((event) => pinch(event.scale, event.focalX, event.focalY))
+      .onFinalize(() => endGesture()),
+    // oxlint-disable-next-line react/capitalized-calls -- gesture factory, not a component
+    Gesture.Pan()
+      .enabled(zoomed)
+      .maxPointers(1)
+      .runOnJS(true)
+      .onStart(() => beginGesture())
+      .onUpdate((event) => pan(event.translationX, event.translationY))
+      .onFinalize(() => endGesture()),
+    // oxlint-disable-next-line react/capitalized-calls -- gesture factory, not a component
+    Gesture.Tap()
+      .numberOfTaps(2)
+      .runOnJS(true)
+      .onEnd(() => reset()),
   );
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- records the start of a session for crash diagnosis
