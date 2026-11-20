@@ -203,7 +203,8 @@ export function createOfficeSim() {
   }
 
   function pose(walker: Walker): Pose {
-    const t = clock + walker.phase;
+    // Standing and seated poses change in coarse steps, so unchanged agents are not redrawn.
+    const t = walker.walking ? clock + walker.phase : Math.floor((clock + walker.phase) * 10) / 10;
     const alertY = 1.65 + Math.sin(t * 4) * 0.06;
     const alertSpin = t * 1.5;
     if (walker.walking) {

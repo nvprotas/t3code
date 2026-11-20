@@ -91,7 +91,7 @@ function shade(hex: string, normal: Vec) {
 
 export interface OfficeRenderer {
   readonly height: number;
-  frame(sim: OfficeSim, selectedId: string | undefined): OfficeFrame;
+  frame(sim: OfficeSim, selectedId: string | undefined): OfficeFrame | null;
   pick(sim: OfficeSim, x: number, y: number): string | undefined;
 }
 
@@ -295,16 +295,54 @@ export function createOfficeRenderer(width: number): OfficeRenderer {
     };
   }
 
-  function frame(sim: OfficeSim, selectedId: string | undefined): OfficeFrame {
+  const cache = new Map<string, { sig: string; item: Item; label: Label }>();
+  let lastKey: string | undefined;
+
+  /** The next picture, or null when nothing visible changed; unchanged agents keep their old polygons. */
+  function frame(sim: OfficeSim, selectedId: string | undefined): OfficeFrame | null {
     const statuses = new Map<number, OfficeStatus>();
     const items: Item[] = [];
     const labels: Label[] = [];
+    const keys: string[] = [];
     for (const walker of sim.walkers.values()) {
       statuses.set(walker.desk, walker.status);
-      items.push(walkerItem(walker, sim.pose(walker), walker.id === selectedId));
-      const [x, y] = project([walker.px, walker.status === "waiting" ? 2.15 : 1.6, walker.pz]);
-      labels.push({ id: walker.id, x, y, text: walker.name, selected: walker.id === selectedId });
+      const pose = sim.pose(walker);
+      const selected = walker.id === selectedId;
+      const sig = [
+        Math.round(walker.px * 60),
+        Math.round(walker.pz * 60),
+        Math.round(walker.heading * 30),
+        walker.status,
+        walker.name,
+        selected,
+        Math.round(pose.legLeft * 20),
+        Math.round(pose.armLeft * 20),
+        Math.round(pose.armRight * 20),
+        Math.round(pose.bob * 100),
+        Math.round(pose.tilt * 10),
+        walker.status === "waiting" ? Math.round(pose.alertY * 50) : "",
+        walker.status === "waiting" ? Math.round(pose.alertSpin * 10) : "",
+      ].join(",");
+      let entry = cache.get(walker.id);
+      if (entry?.sig !== sig) {
+        const [x, y] = project([walker.px, walker.status === "waiting" ? 2.15 : 1.6, walker.pz]);
+        entry = {
+          sig,
+          item: walkerItem(walker, pose, selected),
+          label: { id: walker.id, x, y, text: walker.name, selected },
+        };
+        cache.set(walker.id, entry);
+      }
+      keys.push(walker.id + sig);
+      items.push(entry.item);
+      labels.push(entry.label);
     }
+    for (const id of cache.keys()) {
+      if (!sim.walkers.has(id)) cache.delete(id);
+    }
+    const key = keys.join("|");
+    if (key === lastKey) return null;
+    lastKey = key;
     for (const item of staticItems) {
       if (!item.id.startsWith("desk-")) {
         items.push(item);

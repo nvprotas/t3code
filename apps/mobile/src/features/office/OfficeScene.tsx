@@ -9,7 +9,7 @@ import { createOfficeRenderer, type Item, type OfficeFrame } from "./officeRende
 import { createOfficeSim, type OfficeAgent } from "./officeSim";
 
 // Enough for walking and typing; keeps the JS thread mostly idle.
-const FRAME_INTERVAL_MS = 1000 / 24;
+const FRAME_INTERVAL_MS = 1000 / 20;
 const MAX_ZOOM = 3.5;
 const LABEL_FONT = 10;
 const LABEL_MAX_CHARS = 16;
@@ -43,6 +43,42 @@ const ItemView = memo(function ItemView(props: { readonly polys: Item["polys"] }
           fillOpacity={poly.opacity}
         />
       ))}
+    </G>
+  );
+});
+
+const LabelView = memo(function LabelView(props: {
+  readonly text: string;
+  readonly x: number;
+  readonly y: number;
+  readonly selected: boolean;
+}) {
+  const text =
+    props.text.length > LABEL_MAX_CHARS
+      ? `${props.text.slice(0, LABEL_MAX_CHARS - 1)}…`
+      : props.text;
+  const w = text.length * LABEL_FONT * 0.56 + 10;
+  return (
+    <G>
+      <Rect
+        x={props.x - w / 2}
+        y={props.y - LABEL_FONT - 4}
+        width={w}
+        height={LABEL_FONT + 7}
+        rx={6}
+        fill={props.selected ? "#facc15" : "#000000"}
+        fillOpacity={props.selected ? 1 : 0.6}
+      />
+      <SvgText
+        x={props.x}
+        y={props.y - 3}
+        fontSize={LABEL_FONT}
+        fontWeight="600"
+        fill={props.selected ? "#1f2937" : "#ffffff"}
+        textAnchor="middle"
+      >
+        {text}
+      </SvgText>
     </G>
   );
 });
@@ -131,15 +167,14 @@ export function OfficeScene(props: {
     let handle = 0;
     let last = 0;
     let frames = 0;
-    let drawnFor: string | undefined | null = null;
     const tick = (now: number) => {
       handle = requestAnimationFrame(tick);
       if (last !== 0 && now - last < FRAME_INTERVAL_MS) return;
-      const animating = sim.step(last === 0 ? 0 : Math.min(0.1, (now - last) / 1000));
+      sim.step(last === 0 ? 0 : Math.min(0.1, (now - last) / 1000));
       last = now;
-      if (!animating && drawnFor === props.selectedId) return;
-      drawnFor = props.selectedId;
-      setFrame(renderer.frame(sim, props.selectedId));
+      const next = renderer.frame(sim, props.selectedId);
+      if (!next) return;
+      setFrame(next);
       frames += 1;
       if (frames === 1) logOfficeStep("first frame");
       if (frames === 30) logOfficeStep(OFFICE_STABLE_MARK);
@@ -170,38 +205,15 @@ export function OfficeScene(props: {
                   <ItemView key={item.id} polys={item.polys} />
                 ))}
               </G>
-              {frame.labels.map((label) => {
-                const text =
-                  label.text.length > LABEL_MAX_CHARS
-                    ? `${label.text.slice(0, LABEL_MAX_CHARS - 1)}…`
-                    : label.text;
-                const w = text.length * LABEL_FONT * 0.56 + 10;
-                const x = label.x * view.k + view.tx;
-                const y = label.y * view.k + view.ty;
-                return (
-                  <G key={label.id}>
-                    <Rect
-                      x={x - w / 2}
-                      y={y - LABEL_FONT - 4}
-                      width={w}
-                      height={LABEL_FONT + 7}
-                      rx={6}
-                      fill={label.selected ? "#facc15" : "#000000"}
-                      fillOpacity={label.selected ? 1 : 0.6}
-                    />
-                    <SvgText
-                      x={x}
-                      y={y - 3}
-                      fontSize={LABEL_FONT}
-                      fontWeight="600"
-                      fill={label.selected ? "#1f2937" : "#ffffff"}
-                      textAnchor="middle"
-                    >
-                      {text}
-                    </SvgText>
-                  </G>
-                );
-              })}
+              {frame.labels.map((label) => (
+                <LabelView
+                  key={label.id}
+                  text={label.text}
+                  x={Math.round(label.x * view.k + view.tx)}
+                  y={Math.round(label.y * view.k + view.ty)}
+                  selected={label.selected}
+                />
+              ))}
             </Svg>
           </Pressable>
         </GestureDetector>
