@@ -3,7 +3,7 @@ import { sshTargetKey } from "@t3tools/client-runtime/connection";
 import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
-import { msg, useGT } from "gt-react-native";
+import { msg, T, useGT } from "gt-react-native";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
@@ -166,7 +166,9 @@ export function SshConnectionForm({
         };
         setAttemptedTarget(target);
         if (currentSshTargets().some((saved) => sshTargetKey(saved) === sshTargetKey(target))) {
-          throw new Error("This SSH destination is already saved. Reconnect it from Environments.");
+          throw new Error(
+            gt("This SSH destination is already saved. Reconnect it from Environments."),
+          );
         }
         const previous = owned.targets.has(sshTargetKey(target))
           ? await readSshCredentials(target)
@@ -221,12 +223,16 @@ export function SshConnectionForm({
         contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
       >
         {!isSshSupported() ? (
-          <AppText>SSH connections require an Android build with SSH support.</AppText>
+          <AppText>
+            <T>SSH connections require an Android build with SSH support.</T>
+          </AppText>
         ) : (
           <View collapsable={false} className="gap-4">
-            <AppText>Connect to a running T3 Code server using an SSH key.</AppText>
+            <AppText>
+              <T>Connect to a running T3 Code server using an SSH key.</T>
+            </AppText>
             <ConnectionFormField
-              label="Host"
+              label={gt("Host")}
               placeholder="user@server.example:22"
               value={host}
               onChangeText={setHost}
@@ -235,10 +241,10 @@ export function SshConnectionForm({
               editable={!busy}
             />
             <AppText className="text-sm text-foreground-muted">
-              A username or port in Host overrides the fields below.
+              <T>A username or port in Host overrides the fields below.</T>
             </AppText>
             <ConnectionFormField
-              label="Username"
+              label={gt("Username")}
               placeholder="user"
               value={username}
               onChangeText={setUsername}
@@ -247,20 +253,22 @@ export function SshConnectionForm({
               editable={!busy}
             />
             <ConnectionFormField
-              label="Port"
+              label={gt("Port")}
               value={port}
               onChangeText={setPort}
               keyboardType="number-pad"
               editable={!busy}
             />
             <ConnectionFormField
-              label="Label (optional)"
-              placeholder="My server"
+              label={gt("Label (optional)")}
+              placeholder={gt("My server")}
               value={label}
               onChangeText={setLabel}
               editable={!busy}
             />
-            <AppText>Target SSH key</AppText>
+            <AppText>
+              <T>Target SSH key</T>
+            </AppText>
             <SshKeyPicker
               keyInfo={key}
               busy={busy}
@@ -268,15 +276,17 @@ export function SshConnectionForm({
               onError={setError}
             />
             <Button
-              label={useBastion ? "Remove bastion" : "Use bastion"}
+              label={useBastion ? gt("Remove bastion") : gt("Use bastion")}
               disabled={busy}
               onPress={() => setUseBastion(!useBastion)}
             />
             {useBastion ? (
               <View className="gap-4">
-                <AppText>Bastion</AppText>
+                <AppText>
+                  <T>Bastion</T>
+                </AppText>
                 <ConnectionFormField
-                  label="Bastion host"
+                  label={gt("Bastion host")}
                   placeholder="user@bastion.example:22"
                   value={bastionHost}
                   onChangeText={setBastionHost}
@@ -285,7 +295,7 @@ export function SshConnectionForm({
                   editable={!busy}
                 />
                 <ConnectionFormField
-                  label="Bastion username"
+                  label={gt("Bastion username")}
                   value={bastionUsername}
                   onChangeText={setBastionUsername}
                   autoCapitalize="none"
@@ -293,17 +303,21 @@ export function SshConnectionForm({
                   editable={!busy}
                 />
                 <ConnectionFormField
-                  label="Bastion port"
+                  label={gt("Bastion port")}
                   value={bastionPort}
                   onChangeText={setBastionPort}
                   keyboardType="number-pad"
                   editable={!busy}
                 />
                 <AppText>
-                  The target host is reached from the bastion. For a reverse tunnel, use its
-                  assigned loopback address and port.
+                  <T>
+                    The target host is reached from the bastion. For a reverse tunnel, use its
+                    assigned loopback address and port.
+                  </T>
                 </AppText>
-                <AppText>Bastion SSH key</AppText>
+                <AppText>
+                  <T>Bastion SSH key</T>
+                </AppText>
                 <SshKeyPicker
                   keyInfo={bastionKey}
                   busy={busy}
@@ -312,7 +326,7 @@ export function SshConnectionForm({
                 />
                 {bastionKey === null && key !== null ? (
                   <Button
-                    label="Use target key for bastion"
+                    label={gt("Use target key for bastion")}
                     disabled={busy}
                     onPress={() => void chooseKey("bastion", async () => key)}
                   />
@@ -324,7 +338,7 @@ export function SshConnectionForm({
             </AppText>
             {error ? (
               <Button
-                label={diagnosticsCopied ? "Copied diagnostics" : "Copy diagnostics"}
+                label={diagnosticsCopied ? gt("Copied diagnostics") : gt("Copy diagnostics")}
                 fullWidth
                 onPress={() => {
                   const diagnostics =
@@ -333,12 +347,12 @@ export function SshConnectionForm({
                     diagnostics || "SSH configuration failed before connecting.",
                   )
                     .then(() => setDiagnosticsCopied(true))
-                    .catch(() => setError("Could not copy diagnostics. Try again."));
+                    .catch(() => setError(gt("Could not copy diagnostics. Try again.")));
                 }}
               />
             ) : null}
             <Button
-              label="Connect"
+              label={gt("Connect")}
               tone="primary"
               loading={busy}
               disabled={key === null || (useBastion && bastionKey === null)}

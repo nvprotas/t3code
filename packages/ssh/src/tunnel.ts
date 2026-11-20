@@ -337,6 +337,9 @@ function probe() {
 })().catch(() => process.exit(1));
 `;
 
+// kill -0 also passes for a zombie, a reused PID and, on Linux, a thread ID,
+// which ps does not list. Only the serve command the launcher started counts;
+// where ps cannot look up a PID at all, trust kill -0.
 const REMOTE_MANAGED_SERVER_RUNNING_SCRIPT = `managed_server_running() {
   [ -n "$1" ] && kill -0 "$1" 2>/dev/null || return 1
   if MANAGED_ARGS="$(ps -ww -o args= -p "$1" 2>/dev/null)"; then

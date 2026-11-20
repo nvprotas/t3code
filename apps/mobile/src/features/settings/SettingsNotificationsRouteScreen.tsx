@@ -225,7 +225,9 @@ function LocalSettingsNotificationsRouteScreen() {
           const error = squashAtomCommandFailure(result);
           Dialog.alert(
             gt("Notifications unavailable"),
-            error instanceof Error ? error.message : gt("Could not request notification permission."),
+            error instanceof Error
+              ? error.message
+              : gt("Could not request notification permission."),
           );
         }
         return;
@@ -275,7 +277,9 @@ function LocalSettingsNotificationsRouteScreen() {
             <SettingsSwitchRow
               icon="bolt.circle"
               label={gt("Agent Live Updates")}
-              subtitle={gt("Show Working, requests for input, and completed runs beside the clock.")}
+              subtitle={gt(
+                "Show Working, requests for input, and completed runs beside the clock.",
+              )}
               disabled={!enabled}
               value={enabled && liveUpdatesEnabled}
               onValueChange={(next) => void savePreferences({ liveActivitiesEnabled: next })}

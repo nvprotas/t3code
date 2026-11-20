@@ -28,14 +28,14 @@ describe("officeThreadStatus", () => {
     expect(officeThreadStatus(thread({ runtime: running }), "connected")).toBe("working");
   });
 
-  it.each([
-    { hasPendingApprovals: true },
-    { hasPendingUserInput: true },
-  ] as const)("waits for the user on %j even while a turn runs", (pending) => {
-    expect(officeThreadStatus(thread({ runtime: running, ...pending }), "connected")).toBe(
-      "waiting",
-    );
-  });
+  it.each([{ hasPendingApprovals: true }, { hasPendingUserInput: true }] as const)(
+    "waits for the user on %j even while a turn runs",
+    (pending) => {
+      expect(officeThreadStatus(thread({ runtime: running, ...pending }), "connected")).toBe(
+        "waiting",
+      );
+    },
+  );
 
   it.each(["connecting", "reconnecting", "offline", "error", "unsupported", "available"] as const)(
     "is disconnected, not idle or working, when the environment is %s",

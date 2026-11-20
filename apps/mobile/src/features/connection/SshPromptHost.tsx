@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react-native";
 import { useState } from "react";
 import { View } from "react-native";
 
@@ -14,6 +15,7 @@ export function SshPromptHost() {
 }
 
 function SshPromptSheet({ prompt }: { readonly prompt: SshPrompt }) {
+  const gt = useGT();
   const [passphrase, setPassphrase] = useState("");
   const answer = (accept: boolean) => {
     answerSshPrompt(prompt.id, {
@@ -25,7 +27,7 @@ function SshPromptSheet({ prompt }: { readonly prompt: SshPrompt }) {
 
   return (
     <Sheet
-      title={prompt.kind === "host-key" ? "Verify SSH host key" : "Unlock SSH key"}
+      title={prompt.kind === "host-key" ? gt("Verify SSH host key") : gt("Unlock SSH key")}
       onClose={() => answer(false)}
     >
       <ScreenScrollView
@@ -37,24 +39,32 @@ function SshPromptSheet({ prompt }: { readonly prompt: SshPrompt }) {
         <View className="gap-4">
           {prompt.kind === "host-key" ? (
             <>
-              <AppText>{`Verify the SSH host key for ${prompt.destination}`}</AppText>
+              <AppText>
+                {gt("Verify the SSH host key for {destination}", {
+                  destination: prompt.destination,
+                })}
+              </AppText>
               <AppText selectable className="font-mono">
                 {prompt.fingerprint}
               </AppText>
               <AppText>
-                Compare it with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server.
+                {gt("Compare it with {command} on the server.", {
+                  command: "`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`",
+                })}
               </AppText>
             </>
           ) : (
             <>
-              <AppText>{`Unlock the SSH key for ${prompt.destination}`}</AppText>
+              <AppText>
+                {gt("Unlock the SSH key for {destination}", { destination: prompt.destination })}
+              </AppText>
               {prompt.retry ? (
                 <AppText accessibilityLiveRegion="polite" className="text-danger-foreground">
-                  Wrong passphrase
+                  <T>Wrong passphrase</T>
                 </AppText>
               ) : null}
               <ConnectionFormField
-                label="Passphrase"
+                label={gt("Passphrase")}
                 secureTextEntry
                 autoFocus
                 autoCapitalize="none"
@@ -67,12 +77,12 @@ function SshPromptSheet({ prompt }: { readonly prompt: SshPrompt }) {
             </>
           )}
           <Button
-            label={prompt.kind === "host-key" ? "Trust" : "Unlock"}
+            label={prompt.kind === "host-key" ? gt("Trust") : gt("Unlock")}
             tone="primary"
             fullWidth
             onPress={() => answer(true)}
           />
-          <Button label="Cancel" fullWidth onPress={() => answer(false)} />
+          <Button label={gt("Cancel")} fullWidth onPress={() => answer(false)} />
         </View>
       </ScreenScrollView>
     </Sheet>

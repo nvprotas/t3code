@@ -360,9 +360,6 @@ export const REMOTE_ENSURE_T3_HOME_SCRIPT = `if [ -L "$HOME/.t3" ] && [ ! -e "$H
   (cd "$HOME" && mkdir -p "$(readlink .t3)")
 fi`;
 
-// kill -0 also passes for a zombie, a reused PID and, on Linux, a thread ID,
-// which ps does not list. Only the serve command the launcher started counts;
-// where ps cannot look up a PID at all, trust kill -0.
 const REMOTE_PAIRING_SCRIPT = `set -eu
 STATE_DIR="$HOME/.t3/ssh-launch/@@T3_STATE_KEY@@"
 DEFAULT_SERVER_HOME="$HOME/.t3"

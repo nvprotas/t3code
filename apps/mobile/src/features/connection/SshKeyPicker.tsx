@@ -1,11 +1,13 @@
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
+import { msg, T, useGT } from "gt-react-native";
 import { useState } from "react";
 import { View } from "react-native";
 
 import { AppText } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
+import { m } from "../../i18n/messages";
 import { sshNative, type SshKeyInfo } from "../../connection/ssh/native";
 import { ConnectionFormField } from "./ConnectionFormField";
 
@@ -23,11 +25,11 @@ async function importSshKeyFile() {
   let text: string;
   try {
     if (file.size > MAX_KEY_BYTES) {
-      throw new Error("Choose a private key file no larger than 64 KiB.");
+      throw new Error(m(msg("Choose a private key file no larger than 64 KiB.")));
     }
     text = await file.text();
     if (new TextEncoder().encode(text).byteLength > MAX_KEY_BYTES) {
-      throw new Error("Choose a private key file no larger than 64 KiB.");
+      throw new Error(m(msg("Choose a private key file no larger than 64 KiB.")));
     }
   } finally {
     file.delete();
@@ -46,6 +48,7 @@ export function SshKeyPicker({
   readonly onChoose: (action: () => Promise<SshKeyInfo | null>) => Promise<void>;
   readonly onError: (error: string) => void;
 }) {
+  const gt = useGT();
   const [pasteOpen, setPasteOpen] = useState(false);
   const [privateKey, setPrivateKey] = useState("");
   const [copied, setCopied] = useState(false);
@@ -63,19 +66,19 @@ export function SshKeyPicker({
       {key === null ? (
         <>
           <Button
-            label="Generate key"
+            label={gt("Generate key")}
             disabled={busy}
             fullWidth
             onPress={() => void chooseKey(() => sshNative!.generateKey("t3code-android"))}
           />
           <Button
-            label="Import key file"
+            label={gt("Import key file")}
             disabled={busy}
             fullWidth
             onPress={() => void chooseKey(importSshKeyFile)}
           />
           <Button
-            label="Paste key"
+            label={gt("Paste key")}
             disabled={busy}
             fullWidth
             onPress={() => setPasteOpen((open) => !open)}
@@ -83,7 +86,7 @@ export function SshKeyPicker({
           {pasteOpen ? (
             <>
               <ConnectionFormField
-                label="Private key"
+                label={gt("Private key")}
                 multiline
                 numberOfLines={6}
                 value={privateKey}
@@ -93,7 +96,7 @@ export function SshKeyPicker({
                 editable={!busy}
               />
               <Button
-                label="Import key"
+                label={gt("Import key")}
                 disabled={busy || !privateKey.trim()}
                 fullWidth
                 onPress={() =>
@@ -101,7 +104,7 @@ export function SshKeyPicker({
                     const text = privateKey;
                     setPrivateKey("");
                     if (new TextEncoder().encode(text).byteLength > MAX_KEY_BYTES) {
-                      throw new Error("Paste a private key no larger than 64 KiB.");
+                      throw new Error(gt("Paste a private key no larger than 64 KiB."));
                     }
                     return sshNative!.importKey(text);
                   })
@@ -114,7 +117,7 @@ export function SshKeyPicker({
         <View className="gap-3">
           <AppText>
             {key.publicKey?.split(" ")[0] ??
-              (key.encrypted ? "Encrypted SSH key" : "SSH key imported")}
+              (key.encrypted ? gt("Encrypted SSH key") : gt("SSH key imported"))}
           </AppText>
           {key.publicKey !== null ? (
             <>
@@ -122,20 +125,24 @@ export function SshKeyPicker({
                 {key.publicKey}
               </AppText>
               <Button
-                label={copied ? "Copied" : "Copy public key"}
+                label={copied ? gt("Copied") : gt("Copy public key")}
                 fullWidth
                 onPress={() => {
                   void Clipboard.setStringAsync(key.publicKey!)
                     .then(() => setCopied(true))
                     .catch(() =>
-                      setError("Could not copy the public key. Select it to copy manually."),
+                      setError(gt("Could not copy the public key. Select it to copy manually.")),
                     );
                 }}
               />
-              <AppText>Add this public key to ~/.ssh/authorized_keys on the server.</AppText>
+              <AppText>
+                <T>Add this public key to ~/.ssh/authorized_keys on the server.</T>
+              </AppText>
             </>
           ) : (
-            <AppText>The public key is unavailable until this key is unlocked.</AppText>
+            <AppText>
+              <T>The public key is unavailable until this key is unlocked.</T>
+            </AppText>
           )}
         </View>
       )}
