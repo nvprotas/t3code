@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - android-ssh
+      - android-ssh-v0.1.11
   workflow_dispatch:
 
 permissions:
@@ -71,6 +72,8 @@ jobs:
             args:
               - --filter=@t3tools/mobile...
               - --filter=@t3tools/ssh...
+              # The ssh launcher tests run apps/server's __ssh-helper.
+              - --filter=t3...
               - --filter=@t3tools/monorepo
               - --filter=@t3tools/oxlint-plugin-t3code
 
