@@ -150,17 +150,6 @@ jobs:
         working-directory: apps/mobile
         run: pnpm exec expo prebuild --clean --platform android --no-install
 
-      # The Office tab loads this single-file scene from the APK's assets.
-      - name: Build office scene
-        if: ${{ !cancelled() }}
-        working-directory: vendor/t3-office
-        run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npx vite build
-          ls -la dist
-          mkdir -p ../../apps/mobile/android/app/src/main/assets/office
-          cp dist/index.html ../../apps/mobile/android/app/src/main/assets/office/index.html
-
       # The native unit tests only cover these two modules, so a push that leaves
       # them untouched skips the tests; manual runs and new branches always run them.
       - name: Detect native module changes

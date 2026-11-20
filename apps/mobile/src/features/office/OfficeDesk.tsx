@@ -1,5 +1,14 @@
 import { useGT } from "gt-react-native";
-import { Pressable } from "react-native";
+import { useEffect } from "react";
+import { Pressable, View } from "react-native";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { Rect, Svg } from "react-native-svg";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -18,8 +27,48 @@ function cellSize(deskWidth: number) {
   return Math.max(1, Math.floor(inner / OFFICE_SPRITE_WIDTH));
 }
 
+/** Alternates two typing frames on the UI thread; stops while the tab is hidden. */
+function TypingFrame(props: { readonly children: React.ReactNode; readonly animate: boolean }) {
+  const phase = useSharedValue(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts and stops a UI-thread animation with tab visibility
+  useEffect(() => {
+    if (!props.animate) {
+      cancelAnimation(phase);
+      phase.value = 0;
+      return;
+    }
+    phase.value = withRepeat(withTiming(1, { duration: 900, easing: Easing.linear }), -1, false);
+    return () => cancelAnimation(phase);
+  }, [props.animate, phase]);
+  const style = useAnimatedStyle(() => ({ opacity: phase.value >= 0.5 ? 1 : 0 }));
+  return (
+    <Animated.View pointerEvents="none" style={[{ position: "absolute", top: 0, left: 0 }, style]}>
+      {props.children}
+    </Animated.View>
+  );
+}
+
 export function OfficeSprite(props: {
   readonly kind: OfficeStatus | "empty";
+  readonly threadId: string;
+  readonly deskWidth: number;
+  readonly animate?: boolean;
+}) {
+  if (props.kind === "working") {
+    return (
+      <View>
+        <SpriteSvg {...props} kind="working" />
+        <TypingFrame animate={props.animate === true}>
+          <SpriteSvg {...props} kind="typing" />
+        </TypingFrame>
+      </View>
+    );
+  }
+  return <SpriteSvg {...props} />;
+}
+
+function SpriteSvg(props: {
+  readonly kind: OfficeStatus | "empty" | "typing";
   readonly threadId: string;
   readonly deskWidth: number;
 }) {
@@ -51,6 +100,7 @@ export function OfficeDesk(props: {
   readonly title: string;
   readonly status: OfficeStatus;
   readonly width: number;
+  readonly animate: boolean;
   readonly onPress: () => void;
 }) {
   const gt = useGT();
@@ -80,7 +130,12 @@ export function OfficeDesk(props: {
         gap: 2,
       }}
     >
-      <OfficeSprite kind={props.status} threadId={props.threadId} deskWidth={props.width} />
+      <OfficeSprite
+        kind={props.status}
+        threadId={props.threadId}
+        deskWidth={props.width}
+        animate={props.animate}
+      />
       <Text textRole="caption" className="w-full text-center text-foreground" numberOfLines={1}>
         {props.title}
       </Text>

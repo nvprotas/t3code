@@ -18,6 +18,7 @@ type OfficeGroup = ReturnType<typeof buildOfficeGroups>[number];
 
 export function OfficeRoom(props: {
   readonly group: OfficeGroup;
+  readonly animate: boolean;
   readonly onOpenThread: (row: OfficeGroup["rows"][number]) => void;
 }) {
   const gt = useGT();
@@ -66,6 +67,7 @@ export function OfficeRoom(props: {
                   title={row.thread.title}
                   status={row.status}
                   width={deskWidth}
+                  animate={props.animate}
                   onPress={() => props.onOpenThread(row)}
                 />
               ))

@@ -3,7 +3,7 @@ import type { OfficeStatus } from "./officeStatus";
 export const OFFICE_SPRITE_WIDTH = 20;
 export const OFFICE_SPRITE_HEIGHT = 22;
 
-type OfficeSpriteKind = OfficeStatus | "empty";
+type OfficeSpriteKind = OfficeStatus | "empty" | "typing";
 
 interface Layer {
   readonly x: number;
@@ -48,6 +48,13 @@ const SPRITE_LAYERS: Readonly<Record<OfficeSpriteKind, readonly Layer[]>> = {
     ...agent(12),
     { x: 11, y: 13, rows: ["b", "b"] },
     { x: 10, y: 15, rows: ["ss"] },
+  ],
+  typing: [
+    ...DESK,
+    { x: 2, y: 9, rows: ["gggggggg", "gllllggg", "ggglllgg", "glllgggg", "ggllllgg"] },
+    ...agent(12),
+    { x: 11, y: 13, rows: ["b", "b"] },
+    { x: 11, y: 15, rows: ["ss"] },
   ],
   waiting: [
     ...DESK,
@@ -113,6 +120,7 @@ function pixelRects(layers: readonly Layer[]): readonly PixelRect[] {
 const SPRITES = {
   empty: pixelRects(SPRITE_LAYERS.empty),
   working: pixelRects(SPRITE_LAYERS.working),
+  typing: pixelRects(SPRITE_LAYERS.typing),
   waiting: pixelRects(SPRITE_LAYERS.waiting),
   idle: pixelRects(SPRITE_LAYERS.idle),
   disconnected: pixelRects(SPRITE_LAYERS.disconnected),
