@@ -34,10 +34,10 @@ function TypingFrame(props: { readonly children: React.ReactNode; readonly anima
   useEffect(() => {
     if (!props.animate) {
       cancelAnimation(phase);
-      phase.value = 0;
+      phase.set(0);
       return;
     }
-    phase.value = withRepeat(withTiming(1, { duration: 900, easing: Easing.linear }), -1, false);
+    phase.set(withRepeat(withTiming(1, { duration: 900, easing: Easing.linear }), -1, false));
     return () => cancelAnimation(phase);
   }, [props.animate, phase]);
   const style = useAnimatedStyle(() => ({ opacity: phase.value >= 0.5 ? 1 : 0 }));
