@@ -17,11 +17,18 @@ export function OfficeScene(props: {
   const gt = useGT();
   const [width, setWidth] = useState(0);
   const [engine, setEngine] = useState<OfficeEngine | null>(null);
+  // GL callbacks run outside render; rethrowing here hands their errors to the error boundary.
+  const [failure, setFailure] = useState<{ readonly error: unknown } | null>(null);
+  if (failure) throw failure.error;
   const height = Math.round(width * ASPECT);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes thread state into the GL scene
   useEffect(() => {
-    engine?.setAgents(props.agents);
+    try {
+      engine?.setAgents(props.agents);
+    } catch (error) {
+      setFailure({ error });
+    }
   }, [engine, props.agents]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs the render loop only while the tab is visible
@@ -32,7 +39,13 @@ export function OfficeScene(props: {
     const tick = (now: number) => {
       handle = requestAnimationFrame(tick);
       if (last !== 0 && now - last < FRAME_INTERVAL_MS) return;
-      engine.frame(last === 0 ? 0 : Math.min(0.1, (now - last) / 1000));
+      try {
+        engine.frame(last === 0 ? 0 : Math.min(0.1, (now - last) / 1000));
+      } catch (error) {
+        cancelAnimationFrame(handle);
+        setFailure({ error });
+        return;
+      }
       last = now;
     };
     handle = requestAnimationFrame(tick);
@@ -63,7 +76,13 @@ export function OfficeScene(props: {
         >
           <GLView
             style={{ width, height }}
-            onContextCreate={(gl) => setEngine(createOfficeEngine(gl))}
+            onContextCreate={(gl) => {
+              try {
+                setEngine(createOfficeEngine(gl));
+              } catch (error) {
+                setFailure({ error });
+              }
+            }}
           />
         </Pressable>
       )}

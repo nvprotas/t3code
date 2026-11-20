@@ -1,8 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useGT } from "gt-react-native";
-import { use } from "react";
+import { lazy, Suspense, use } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { NativeWorkspaceTabActivityContext } from "../../native/v5-workspace-context";
 import { steadyNavigationThreadShellsAtom } from "../../state/threads";
@@ -10,8 +11,13 @@ import { useWorkspaceEnvironments } from "../../state/workspace";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { OfficeRoom } from "./OfficeRoom";
-import { OfficeScene } from "./OfficeScene";
+import { OfficeSceneFailure } from "./OfficeSceneFailure";
 import { buildOfficeGroups } from "./officeStatus";
+
+// Loaded on demand so a GL or three.js failure stays inside the Office tab instead of blanking the app.
+const OfficeScene = lazy(() =>
+  import("./OfficeScene").then((module) => ({ default: module.OfficeScene })),
+);
 
 export function OfficeScreen() {
   const gt = useGT();
@@ -37,19 +43,23 @@ export function OfficeScreen() {
           contentContainerClassName="gap-6 px-5 pt-4"
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
         >
-          <OfficeScene
-            agents={agents}
-            active={tabActivity?.active ?? true}
-            onOpenAgent={(id) => {
-              const row = rows.find((candidate) => String(candidate.thread.id) === id);
-              if (row) {
-                openThread({
-                  environmentId: String(row.thread.environmentId),
-                  threadId: id,
-                });
-              }
-            }}
-          />
+          <RenderErrorBoundary renderFallback={(failure) => <OfficeSceneFailure {...failure} />}>
+            <Suspense fallback={null}>
+              <OfficeScene
+                agents={agents}
+                active={tabActivity?.active ?? true}
+                onOpenAgent={(id) => {
+                  const row = rows.find((candidate) => String(candidate.thread.id) === id);
+                  if (row) {
+                    openThread({
+                      environmentId: String(row.thread.environmentId),
+                      threadId: id,
+                    });
+                  }
+                }}
+              />
+            </Suspense>
+          </RenderErrorBoundary>
           {groups.map((group) => (
             <OfficeRoom
               key={group.environmentId}
