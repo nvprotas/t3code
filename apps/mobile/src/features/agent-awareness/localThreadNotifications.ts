@@ -1,5 +1,8 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { msg } from "gt-react-native";
+
+import { m } from "../../i18n/messages";
 
 type ThreadNotificationInput = Pick<
   EnvironmentThreadShell,
@@ -81,7 +84,7 @@ export function evaluateThreadNotification(
     return { mark, title: ATTENTION_TITLES[status] };
   }
   if (completion !== null && (prior.completion === null || completion > prior.completion)) {
-    return { mark, title: "Thread completed" };
+    return { mark, title: m(msg("Thread completed")) };
   }
   return { mark, title: null };
 }

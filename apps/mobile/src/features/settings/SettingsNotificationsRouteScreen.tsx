@@ -60,6 +60,7 @@ import { hasCloudPublicConfig, resolveRelayClerkTokenOptions } from "../cloud/pu
 import { makePermissionStatusAtom } from "../../lib/permissionStatusAtom";
 import { runtime } from "../../lib/runtime";
 import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
@@ -187,7 +188,6 @@ function useNotificationsReady(): boolean {
 }
 
 export function SettingsNotificationsRouteScreen() {
-  const gt = useGT();
   if (!hasCloudPublicConfig()) {
     return <LocalSettingsNotificationsRouteScreen />;
   }
@@ -198,8 +198,9 @@ export function SettingsNotificationsRouteScreen() {
 // Builds without T3 Connect cannot receive relay pushes, so the app posts
 // notifications itself from the live connection (LocalThreadNotificationsWorker).
 function LocalSettingsNotificationsRouteScreen() {
+  const gt = useGT();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const savePreferences = useAtomCommand(saveMobilePreferences);
   const [requesting, setRequesting] = useState(false);
   const enabled =
     AsyncResult.isSuccess(preferencesResult) &&
@@ -211,7 +212,7 @@ function LocalSettingsNotificationsRouteScreen() {
   const handleChange = useCallback(
     async (next: boolean) => {
       if (!next) {
-        savePreferences({ localThreadNotificationsEnabled: false });
+        void savePreferences({ localThreadNotificationsEnabled: false });
         return;
       }
       setRequesting(true);
@@ -223,47 +224,49 @@ function LocalSettingsNotificationsRouteScreen() {
         if (!isAtomCommandInterrupted(result)) {
           const error = squashAtomCommandFailure(result);
           Dialog.alert(
-            "Notifications unavailable",
-            error instanceof Error ? error.message : "Could not request notification permission.",
+            gt("Notifications unavailable"),
+            error instanceof Error ? error.message : gt("Could not request notification permission."),
           );
         }
         return;
       }
       if (result.value.type === "granted") {
-        savePreferences({ localThreadNotificationsEnabled: true });
+        void savePreferences({ localThreadNotificationsEnabled: true });
         return;
       }
       if (result.value.type === "unsupported") {
         Dialog.alert(
-          "Notifications unavailable",
-          "Notifications are unavailable on this platform.",
+          gt("Notifications unavailable"),
+          gt("Notifications are unavailable on this platform."),
         );
         return;
       }
       Dialog.alert(
-        "Notifications disabled",
-        "Notifications were denied for this app. Open Settings to enable them.",
+        gt("Notifications disabled"),
+        gt("Notifications were denied for this app. Open Settings to enable them."),
         [
-          { text: "Cancel", style: "cancel" },
-          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+          { text: gt("Cancel"), style: "cancel" },
+          { text: gt("Open Settings"), onPress: () => void Linking.openSettings() },
         ],
       );
     },
-    [savePreferences],
+    [gt, savePreferences],
   );
 
   return (
-    <SettingsScreen title="Notifications">
+    <SettingsScreen title={gt("Notifications")}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         className="flex-1"
         contentContainerClassName="gap-6 px-5 pt-4"
       >
-        <SettingsSection title="Agent activity">
+        <SettingsSection title={gt("Agent activity")}>
           <SettingsSwitchRow
             icon="bell.badge"
-            label="Thread Notifications"
-            subtitle="When a thread finishes, fails, or needs input. Works while the app stays connected; this build has no T3 Connect push."
+            label={gt("Thread Notifications")}
+            subtitle={gt(
+              "When a thread finishes, fails, or needs input. Works while the app stays connected; this build has no T3 Connect push.",
+            )}
             disabled={requesting || !AsyncResult.isSuccess(preferencesResult)}
             value={enabled}
             onValueChange={(next) => void handleChange(next)}
@@ -271,22 +274,24 @@ function LocalSettingsNotificationsRouteScreen() {
           {Platform.OS === "android" ? (
             <SettingsSwitchRow
               icon="bolt.circle"
-              label="Agent Live Updates"
-              subtitle="Show Working, requests for input, and completed runs beside the clock."
+              label={gt("Agent Live Updates")}
+              subtitle={gt("Show Working, requests for input, and completed runs beside the clock.")}
               disabled={!enabled}
               value={enabled && liveUpdatesEnabled}
-              onValueChange={(next) => savePreferences({ liveActivitiesEnabled: next })}
+              onValueChange={(next) => void savePreferences({ liveActivitiesEnabled: next })}
             />
           ) : null}
           {supportsAndroidLiveUpdateSettings() ? (
             <SettingsRow
               icon="gearshape"
-              label="Android Live Update settings"
+              label={gt("Android Live Update settings")}
               onPress={() => {
                 void openAndroidLiveUpdateSettings().catch(() => {
                   Dialog.alert(
-                    "Couldn't open Settings",
-                    "Open Android Settings, select T3 Code, then enable Live Updates in Notifications.",
+                    gt("Couldn't open Settings"),
+                    gt(
+                      "Open Android Settings, select T3 Code, then enable Live Updates in Notifications.",
+                    ),
                   );
                 });
               }}

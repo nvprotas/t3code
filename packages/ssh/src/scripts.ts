@@ -122,7 +122,7 @@ export function stripTrailingNewlines(value: string): string {
   return value.replace(/\n+$/u, "");
 }
 
-function shellSingleQuote(value: string): string {
+export function shellSingleQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
@@ -354,15 +354,15 @@ fi
 exec "$T3_RUNTIME_DIR/t3" "$@"
 `;
 
-// kill -0 also passes for a zombie, a reused PID and, on Linux, a thread ID,
-// which ps does not list. Only the serve command the launcher started counts;
-// where ps cannot look up a PID at all, trust kill -0.
 // NFS-shared homes can link ~/.t3 to a directory that does not exist yet, and
 // mkdir -p fails with EEXIST on a dangling symlink, so create its target first.
 export const REMOTE_ENSURE_T3_HOME_SCRIPT = `if [ -L "$HOME/.t3" ] && [ ! -e "$HOME/.t3" ]; then
   (cd "$HOME" && mkdir -p "$(readlink .t3)")
 fi`;
 
+// kill -0 also passes for a zombie, a reused PID and, on Linux, a thread ID,
+// which ps does not list. Only the serve command the launcher started counts;
+// where ps cannot look up a PID at all, trust kill -0.
 const REMOTE_PAIRING_SCRIPT = `set -eu
 STATE_DIR="$HOME/.t3/ssh-launch/@@T3_STATE_KEY@@"
 DEFAULT_SERVER_HOME="$HOME/.t3"

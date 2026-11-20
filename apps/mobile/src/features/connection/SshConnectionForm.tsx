@@ -3,11 +3,13 @@ import { sshTargetKey } from "@t3tools/client-runtime/connection";
 import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
+import { msg, useGT } from "gt-react-native";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
 import { AppText } from "../../components/ui/AppText";
+import { m } from "../../i18n/messages";
 import { Button } from "../../components/ui/Button";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import {
@@ -30,9 +32,9 @@ import { useConnectionController } from "./useConnectionController";
 
 function sshErrorMessage(error: unknown): string {
   if (sshNativeErrorCode(error) === "SSH_KEY_INVALID") {
-    return "This private key could not be read. Use an OpenSSH, PEM, or PuTTY private key.";
+    return m(msg("This private key could not be read. Use an OpenSSH, PEM, or PuTTY private key."));
   }
-  return error instanceof Error ? error.message : "Could not connect over SSH. Try again.";
+  return error instanceof Error ? error.message : m(msg("Could not connect over SSH. Try again."));
 }
 
 async function cleanupEarlierSshAttempts(
@@ -57,6 +59,7 @@ export function SshConnectionForm({
 }: {
   readonly expectedEnvironmentId: EnvironmentId | undefined;
 }) {
+  const gt = useGT();
   const navigation = useNavigation();
   const { connectSsh } = useConnectionController();
   const [host, setHost] = useState("");
@@ -210,7 +213,7 @@ export function SshConnectionForm({
   };
 
   return (
-    <SettingsScreen title="Connect over SSH">
+    <SettingsScreen title={gt("Connect over SSH")}>
       <ScreenScrollView
         className="flex-1"
         contentInsetAdjustmentBehavior="automatic"

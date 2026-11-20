@@ -279,7 +279,7 @@ function PairingForm({
           {hasCloudPublicConfig() ? <T3ConnectSection /> : null}
           {isSshSupported() ? (
             <Button
-              label="Connect over SSH"
+              label={gt("Connect over SSH")}
               fullWidth
               onPress={() => navigation.dispatch(CommonActions.setParams({ mode: "ssh" }))}
             />

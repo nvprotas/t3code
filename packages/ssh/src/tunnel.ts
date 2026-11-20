@@ -54,6 +54,7 @@ import {
   buildRemoteNodeEnvScript,
   buildRemotePairingScript,
   REMOTE_ENSURE_T3_HOME_SCRIPT,
+  shellSingleQuote,
   buildRemoteT3RunnerScript,
   stripTrailingNewlines,
   type RemoteT3RunnerOptions,
