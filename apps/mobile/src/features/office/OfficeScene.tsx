@@ -20,7 +20,6 @@ export function OfficeScene(props: {
   const [engine, setEngine] = useState<OfficeEngine | null>(null);
   // GL callbacks run outside render; rethrowing here hands their errors to the error boundary.
   const [failure, setFailure] = useState<{ readonly error: unknown } | null>(null);
-  if (failure) throw failure.error;
   const height = Math.round(width * ASPECT);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- records the start of a 3D session for crash diagnosis
@@ -62,6 +61,8 @@ export function OfficeScene(props: {
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases GL resources with the view
   useEffect(() => () => engine?.dispose(), [engine]);
+
+  if (failure) throw failure.error;
 
   return (
     <View
