@@ -10,6 +10,7 @@ import { useWorkspaceEnvironments } from "../../state/workspace";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { OfficeRoom } from "./OfficeRoom";
+import { OfficeScene } from "./OfficeScene";
 import { buildOfficeGroups } from "./officeStatus";
 
 export function OfficeScreen() {
@@ -21,6 +22,8 @@ export function OfficeScreen() {
   const environments = useWorkspaceEnvironments();
   const threads = useAtomValue(steadyNavigationThreadShellsAtom);
   const groups = buildOfficeGroups(environments, threads);
+  const rows = groups.flatMap((group) => group.rows);
+  const agents = rows.map((row) => ({ id: String(row.thread.id), status: row.status }));
   const openThread = (target: { environmentId: string; threadId: string }) =>
     selectDetail({ name: "Thread", params: target });
 
@@ -34,11 +37,23 @@ export function OfficeScreen() {
           contentContainerClassName="gap-6 px-5 pt-4"
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
         >
+          <OfficeScene
+            agents={agents}
+            active={tabActivity?.active ?? true}
+            onOpenAgent={(id) => {
+              const row = rows.find((candidate) => String(candidate.thread.id) === id);
+              if (row) {
+                openThread({
+                  environmentId: String(row.thread.environmentId),
+                  threadId: id,
+                });
+              }
+            }}
+          />
           {groups.map((group) => (
             <OfficeRoom
               key={group.environmentId}
               group={group}
-              animate={tabActivity?.active ?? true}
               onOpenThread={({ thread }) =>
                 openThread({
                   environmentId: String(thread.environmentId),
