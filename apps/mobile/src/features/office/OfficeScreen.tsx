@@ -39,11 +39,14 @@ export function OfficeScreen() {
   const threads = useAtomValue(steadyNavigationThreadShellsAtom);
   const groups = buildOfficeGroups(environments, threads);
   const rows = groups.flatMap((group) => group.rows);
-  const agents = rows.map((row) => ({
-    id: String(row.thread.id),
-    name: row.thread.title,
-    status: row.status,
-  }));
+  // Threads of unreachable environments stay in the list below but get no one in the room.
+  const agents = rows
+    .filter((row) => row.status !== "disconnected")
+    .map((row) => ({
+      id: String(row.thread.id),
+      name: row.thread.title,
+      status: row.status,
+    }));
   const selectedGroup = groups.find((group) =>
     group.rows.some((row) => String(row.thread.id) === selectedId),
   );
