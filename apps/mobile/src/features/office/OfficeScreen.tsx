@@ -80,6 +80,11 @@ export function OfficeScreen() {
   const projectTitles = new Map(
     projects.map((project) => [`${project.environmentId}/${project.id}`, project.title]),
   );
+  const scratchProjects = new Set(
+    projects
+      .filter((project) => project.isScratch === true)
+      .map((project) => `${project.environmentId}/${project.id}`),
+  );
   const groups = buildOfficeGroups(environments, threads);
   const rows = groups.flatMap((group) => group.rows);
   // Threads of unreachable environments stay in the list below but get no one in the room.
@@ -94,6 +99,10 @@ export function OfficeScreen() {
     task: officeTask(row.thread.title),
     status: row.status,
     ...officeSceneFacts(row.thread, row.status),
+    // Every thread without a project has its own scratch folder; they still share one pod.
+    ...(scratchProjects.has(`${row.thread.environmentId}/${row.thread.projectId}`)
+      ? { team: `${row.thread.environmentId}/scratch` }
+      : {}),
     teamName: projectTitles.get(`${row.thread.environmentId}/${row.thread.projectId}`) ?? "",
   }));
   const selectedGroup = groups.find((group) =>
