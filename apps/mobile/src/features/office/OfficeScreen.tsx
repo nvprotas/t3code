@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { CommandId, MessageId } from "@t3tools/contracts";
 import { useGT, useLocale } from "gt-react-native";
 import { lazy, Suspense, use, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
@@ -7,7 +8,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text } from "../../components/ui/AppText";
 import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
+import { uuidv4 } from "../../lib/uuid";
 import { NativeWorkspaceTabActivityContext } from "../../native/v5-workspace-context";
+import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { steadyNavigationThreadShellsAtom } from "../../state/threads";
 import { useWorkspaceEnvironments } from "../../state/workspace";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
@@ -95,6 +98,7 @@ export function OfficeScreen() {
           contentInsetAdjustmentBehavior="automatic"
           scrollEnabled={!scrollLocked}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           className="flex-1"
           contentContainerClassName="gap-6 px-5 pt-4"
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
@@ -147,6 +151,18 @@ export function OfficeScreen() {
                       })
                     }
                     onClose={() => setSelectedId(undefined)}
+                    onSend={(text) =>
+                      enqueueThreadOutboxMessage({
+                        environmentId: selected.thread.environmentId,
+                        threadId: selected.thread.id,
+                        messageId: MessageId.make(uuidv4()),
+                        commandId: CommandId.make(uuidv4()),
+                        text,
+                        attachments: [],
+                        dispatchMode: "auto",
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
                   />
                 </View>
               ) : null}

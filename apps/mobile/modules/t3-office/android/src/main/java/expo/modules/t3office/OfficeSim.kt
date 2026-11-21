@@ -67,6 +67,9 @@ class Walker(val id: String, var name: String, var status: String, var desk: Int
   var ghost = 0f
   var px = x
   var pz = z
+  // Where the name tag sits: how many steps it is lifted to clear others, eased on screen.
+  var labelLevel = 0
+  var labelLift = 0f
 
   val arrived get() = route.isEmpty()
 }

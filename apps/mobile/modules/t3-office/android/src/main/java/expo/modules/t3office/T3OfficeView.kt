@@ -31,6 +31,7 @@ private const val HOME_ZOOM_CAP = 2.2f
 private const val NAME_MAX_CHARS = 12
 private const val TASK_MAX_CHARS = 18
 private const val MAX_LABELS = 16
+private const val LABEL_LEVELS = 4
 
 class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   private val onSelectAgent by EventDispatcher()
@@ -438,12 +439,12 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
       rank[count] = priority(walker)
       count++
     }
-    // Insertion sort by rank, then front to back, so nearer agents keep their tags.
+    // Insertion sort by rank only; the map's own order breaks ties, so tags keep their turn.
     for (i in 1 until count) {
       val walker = order[i]!!
       val r = rank[i]
       var j = i - 1
-      while (j >= 0 && (rank[j] > r || (rank[j] == r && order[j]!!.pz < walker.pz))) {
+      while (j >= 0 && rank[j] > r) {
         order[j + 1] = order[j]
         rank[j + 1] = rank[j]
         j--
@@ -465,35 +466,53 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
       val padX = 5f * density
       val textWidth = max(namePaint.measureText(name), if (task.isEmpty()) 0f else taskPaint.measureText(task))
       val labelHeight = namePaint.textSize + 5f * density + if (task.isEmpty()) 0f else taskPaint.textSize + 2f * density
+      val step = labelHeight + 2f * density
       val left = x - textWidth / 2f - padX
       val right = x + textWidth / 2f + padX
-      var bottom = baseY
-      var free = false
-      for (attempt in 0 until 4) {
-        if (!overlaps(left, bottom - labelHeight, right, bottom, drawn)) {
-          free = true
+      // Keep the last level while it is still clear; drop lower only with room to spare.
+      var level = -1
+      if (walker.labelLevel in 1 until LABEL_LEVELS) {
+        val keep = baseY - walker.labelLevel * step
+        if (!overlaps(left, keep - labelHeight, right, keep, drawn, 0f)) level = walker.labelLevel
+      }
+      for (candidate in 0 until LABEL_LEVELS) {
+        if (level >= 0 && candidate >= level) break
+        val bottom = baseY - candidate * step
+        val margin = if (candidate < walker.labelLevel) 6f * density else 0f
+        if (!overlaps(left, bottom - labelHeight, right, bottom, drawn, margin)) {
+          level = candidate
           break
         }
-        bottom -= labelHeight + 2f * density
       }
-      if (!free) {
-        if (!important) continue
-        bottom = baseY
+      if (level < 0) {
+        if (!important) {
+          walker.labelLevel = 0
+          continue
+        }
+        level = 0
       }
-      val top = bottom - labelHeight
+      walker.labelLevel = level
+      val goal = level * step
+      walker.labelLift += (goal - walker.labelLift) * 0.25f
+      if (abs(goal - walker.labelLift) < 0.5f) walker.labelLift = goal
+      // Others avoid where this tag is going, not where it is mid-glide.
       placed[drawn * 4] = left
-      placed[drawn * 4 + 1] = top
+      placed[drawn * 4 + 1] = baseY - goal - labelHeight
       placed[drawn * 4 + 2] = right
-      placed[drawn * 4 + 3] = bottom
+      placed[drawn * 4 + 3] = baseY - goal
       drawn++
+      val bottom = baseY - walker.labelLift
+      val top = bottom - labelHeight
       drawLabel(canvas, name, task, left, top, right, bottom, x, walker)
       if (walker.status == "waiting") drawAlert(canvas, x, top - 3f * density, host.sim.time, if (walker.ask == "approval") "!" else "?")
     }
   }
 
-  private fun overlaps(left: Float, top: Float, right: Float, bottom: Float, drawn: Int): Boolean {
+  private fun overlaps(left: Float, top: Float, right: Float, bottom: Float, drawn: Int, margin: Float): Boolean {
     for (i in 0 until drawn) {
-      if (left < placed[i * 4 + 2] && right > placed[i * 4] && top < placed[i * 4 + 3] && bottom > placed[i * 4 + 1]) return true
+      if (left - margin < placed[i * 4 + 2] && right + margin > placed[i * 4] &&
+        top - margin < placed[i * 4 + 3] && bottom + margin > placed[i * 4 + 1]
+      ) return true
     }
     return false
   }

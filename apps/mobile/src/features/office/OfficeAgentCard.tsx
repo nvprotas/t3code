@@ -1,7 +1,8 @@
 import { useGT } from "gt-react-native";
+import { useState } from "react";
 import { View } from "react-native";
 
-import { AppText as Text } from "../../components/ui/AppText";
+import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { relativeTime } from "../../lib/time";
 import type { OfficeStatus } from "./officeStatus";
@@ -23,8 +24,27 @@ export function OfficeAgentCard(props: {
   readonly environment: string;
   readonly onOpen: () => void;
   readonly onClose: () => void;
+  /** Queues a message to the thread; it reaches the agent like one sent from the chat. */
+  readonly onSend: (text: string) => Promise<void>;
 }) {
   const gt = useGT();
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const send = async () => {
+    const text = draft.trim();
+    if (text.length === 0 || sending) return;
+    setSending(true);
+    setFailed(false);
+    try {
+      await props.onSend(text);
+      setDraft("");
+    } catch {
+      setFailed(true);
+    } finally {
+      setSending(false);
+    }
+  };
   const { thread } = props;
   const status =
     props.status === "working"
@@ -56,8 +76,31 @@ export function OfficeAgentCard(props: {
           {thread.runtime.lastError}
         </Text>
       ) : null}
+      <View className="flex-row items-center gap-2">
+        <AppTextInput
+          className="min-h-11 flex-1 py-2"
+          value={draft}
+          onChangeText={setDraft}
+          placeholder={gt("Message {name}", { name: props.name })}
+          returnKeyType="send"
+          submitBehavior="submit"
+          onSubmitEditing={() => void send()}
+          editable={!sending}
+        />
+        <Button
+          label={gt("Send", { $context: "verb, sends the message" })}
+          onPress={() => void send()}
+          tone="primary"
+          size="compact"
+        />
+      </View>
+      {failed ? (
+        <Text textRole="caption" className="text-danger-foreground">
+          {gt("The message was not sent. Try again.")}
+        </Text>
+      ) : null}
       <View className="flex-row gap-2">
-        <Button label={gt("Open thread")} onPress={props.onOpen} tone="primary" size="compact" />
+        <Button label={gt("Open thread")} onPress={props.onOpen} size="compact" />
         <Button label={gt("Close")} onPress={props.onClose} size="compact" />
       </View>
     </View>
