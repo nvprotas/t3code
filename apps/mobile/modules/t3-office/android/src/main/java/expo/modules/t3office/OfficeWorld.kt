@@ -6,7 +6,7 @@ import kotlin.math.abs
 
 class FloorPoint(val x: Float, val z: Float)
 
-enum class Activity { NONE, COFFEE, ARCADE, READ, PINGPONG, COUCH, CHAT, WANDER }
+enum class Activity { NONE, COFFEE, ARCADE, READ, PINGPONG, COUCH, CHAT, WANDER, SLEEP, GONG }
 
 /** A place in the lounge where an idle agent does something; `lane` is the lane it is reached from. */
 class Spot(val x: Float, val z: Float, val heading: Float, val activity: Activity, val lane: Int = -1)
@@ -36,6 +36,18 @@ internal object OfficeWorld {
   const val MINIS_PER_CABINET = 4
 
   val door = FloorPoint(-9.6f, -2.8f)
+
+  // A gong facing the room, rung by whoever just got a pull request merged.
+  const val GONG_X = 9.2f
+  const val GONG_Z = -1.9f
+  val gongSpot = FloorPoint(GONG_X, GONG_Z + 0.85f)
+
+  // The robot vacuum's dock, and the floor it cleans.
+  val dock = FloorPoint(9.4f, 3.1f)
+
+  /** A random point on a lane, where the vacuum heads next. */
+  fun randomFloorPoint(random: kotlin.random.Random): FloorPoint =
+    FloorPoint(-7.2f + random.nextFloat() * 16f, lanes[random.nextInt(lanes.size)])
 
   val spots = listOf(
     Spot(5.0f, 5.35f, PI_F, Activity.COFFEE),

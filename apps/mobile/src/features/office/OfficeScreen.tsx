@@ -18,7 +18,7 @@ import { officeCrashedLastTime, readOfficeLog } from "./officeLog";
 import { officeNames, officeTask } from "./officeNames";
 import { OfficeRoom } from "./OfficeRoom";
 import { OfficeSceneFailure } from "./OfficeSceneFailure";
-import { buildOfficeGroups } from "./officeStatus";
+import { buildOfficeGroups, officeSceneFacts } from "./officeStatus";
 
 // Loaded on demand so a GL or three.js failure stays inside the Office tab instead of blanking the app.
 const OfficeScene = lazy(() =>
@@ -57,6 +57,7 @@ export function OfficeScreen() {
   const groups = buildOfficeGroups(environments, threads);
   const rows = groups.flatMap((group) => group.rows);
   // Threads of unreachable environments stay in the list below but get no one in the room.
+  const now = Date.now();
   const present = rows.filter((row) => row.status !== "disconnected");
   const names = officeNames(
     present.map((row) => String(row.thread.id)),
@@ -67,7 +68,7 @@ export function OfficeScreen() {
     name: names[index] ?? "",
     task: officeTask(row.thread.title),
     status: row.status,
-    subagents: row.thread.pendingBackgroundTasks.filter((task) => task.kind === "subagent").length,
+    ...officeSceneFacts(row.thread, row.status, now),
   }));
   const selectedGroup = groups.find((group) =>
     group.rows.some((row) => String(row.thread.id) === selectedId),

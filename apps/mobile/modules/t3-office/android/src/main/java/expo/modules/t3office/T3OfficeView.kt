@@ -8,6 +8,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.view.Choreographer
 import android.view.GestureDetector
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -97,10 +98,23 @@ class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context,
           item.optString("task"),
           item.optString("status", "idle"),
           item.optInt("subagents", 0),
+          item.optString("team"),
+          item.optString("ask"),
+          item.optBoolean("sleeping"),
+          item.optInt("merged", 0),
+          item.optBoolean("alarm"),
+          item.optBoolean("limited"),
         ),
       )
     }
-    sim.setAgents(agents)
+    val newlyWaiting = sim.setAgents(agents)
+    // A nudge when someone starts waiting for an answer, only while the office is on screen.
+    if (newlyWaiting > 0 && running) {
+      canvasView.performHapticFeedback(
+        HapticFeedbackConstants.LONG_PRESS,
+        HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING,
+      )
+    }
     canvasView.invalidate()
   }
 
@@ -264,6 +278,14 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
     color = Color.WHITE
   }
   private val pill = RectF()
+  private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    style = Paint.Style.STROKE
+    strokeWidth = 3f * resources.displayMetrics.density
+  }
+  private val snorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    typeface = Typeface.DEFAULT_BOLD
+    color = Color.WHITE
+  }
 
   // Label layout scratch space, reused every frame.
   private val order = arrayOfNulls<Walker>(MAX_LABELS)
@@ -386,8 +408,13 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
     canvas.scale(host.zoom, host.zoom)
     renderer.draw(canvas, host.sim, host.selectedId)
     canvas.restore()
+    // Night outside, or agents held back by a provider limit, dim the lights.
+    val dark = max(renderer.nightness() * 0.36f, host.sim.limitedShare * 0.3f)
+    if (dark > 0.01f) canvas.drawColor(Color.argb((dark * 255).toInt(), 8, 12, 32))
+    drawGongRings(canvas, renderer)
     for (walker in host.sim.walkers.values) {
       if (walker.cabinet >= 0 && walker.subagents > 0) drawSubagents(canvas, renderer, walker)
+      if (walker.activity == Activity.SLEEP && walker.arrived && walker.sleeping) drawSnore(canvas, renderer, walker)
     }
     drawLabels(canvas, renderer)
     host.frameDrawn()
@@ -460,7 +487,7 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
       placed[drawn * 4 + 3] = bottom
       drawn++
       drawLabel(canvas, name, task, left, top, right, bottom, x, walker)
-      if (walker.status == "waiting") drawAlert(canvas, x, top - 3f * density, host.sim.time)
+      if (walker.status == "waiting") drawAlert(canvas, x, top - 3f * density, host.sim.time, if (walker.ask == "approval") "!" else "?")
     }
   }
 
@@ -502,15 +529,47 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
     }
   }
 
-  /** A pulsing "!" bubble over an agent that needs an answer, drawn on top of everything. */
-  private fun drawAlert(canvas: Canvas, x: Float, bottom: Float, time: Float) {
+  /** A pulsing bubble over an agent that needs you: "!" to approve something, "?" to answer. */
+  private fun drawAlert(canvas: Canvas, x: Float, bottom: Float, time: Float, glyph: String) {
     val radius = (10f + 1.5f * kotlin.math.sin(time * 6f)) * density
     val cy = bottom - radius
     badgePaint.color = Color.WHITE
     canvas.drawCircle(x, cy, radius + 2f * density, badgePaint)
     badgePaint.color = Color.rgb(0xdc, 0x26, 0x26)
     canvas.drawCircle(x, cy, radius, badgePaint)
-    canvas.drawText("!", x, cy + badgeText.textSize * 0.36f, badgeText)
+    canvas.drawText(glyph, x, cy + badgeText.textSize * 0.36f, badgeText)
+  }
+
+  private fun screenX(renderer: OfficeRenderer, x: Float, y: Float, z: Float) =
+    renderer.projectX(x, y, z) * host.zoom + host.panX
+
+  private fun screenY(renderer: OfficeRenderer, x: Float, y: Float, z: Float) =
+    renderer.projectY(x, y, z) * host.zoom + host.panY
+
+  /** Rings spreading from the gong while it sounds. */
+  private fun drawGongRings(canvas: Canvas, renderer: OfficeRenderer) {
+    val ring = renderer.gongRing(host.sim)
+    if (ring <= 0f) return
+    val x = renderer.gongX() * host.zoom + host.panX
+    val y = renderer.gongY() * host.zoom + host.panY
+    for (i in 0 until 3) {
+      val spread = ((1f - ring) * 3f + i / 3f) % 1f
+      strokePaint.color = Color.argb((ring * (1f - spread) * 230).toInt(), 0xfa, 0xcc, 0x15)
+      canvas.drawCircle(x, y, (8f + spread * 46f) * density * min(2f, host.zoom), strokePaint)
+    }
+  }
+
+  /** Letters drifting up from a sleeping agent. */
+  private fun drawSnore(canvas: Canvas, renderer: OfficeRenderer, walker: Walker) {
+    val x = screenX(renderer, walker.px, 1.2f, walker.pz)
+    val y = screenY(renderer, walker.px, 1.2f, walker.pz)
+    val scale = min(1.6f, max(0.7f, host.zoom / 2f))
+    for (i in 0 until 3) {
+      val rise = (host.sim.time * 0.45f + i / 3f + walker.phase) % 1f
+      snorePaint.textSize = (8f + rise * 6f) * density * scale
+      snorePaint.alpha = ((1f - rise) * 255).toInt()
+      canvas.drawText("z", x + rise * 14f * density * scale, y - rise * 26f * density * scale, snorePaint)
+    }
   }
 
   /** How many subagents a thread runs, shown on its office's door sign. */

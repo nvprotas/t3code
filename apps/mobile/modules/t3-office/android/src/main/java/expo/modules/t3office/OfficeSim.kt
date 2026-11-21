@@ -9,7 +9,29 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
-class OfficeAgent(val id: String, val name: String, val task: String, val status: String, val subagents: Int)
+class OfficeAgent(
+  val id: String,
+  val name: String,
+  val task: String,
+  val status: String,
+  val subagents: Int,
+  val team: String = "",
+  val ask: String = "",
+  val sleeping: Boolean = false,
+  val merged: Int = 0,
+  val alarm: Boolean = false,
+  val limited: Boolean = false,
+)
+
+/** The office's robot vacuum, which wanders the lanes and docks between rounds. */
+class Vacuum {
+  var x = OfficeWorld.dock.x
+  var z = OfficeWorld.dock.z
+  var heading = 0f
+  var route: MutableList<FloorPoint> = mutableListOf()
+  var pause = 6f
+  var rounds = 0
+}
 
 class Walker(val id: String, var name: String, var status: String, var desk: Int, var x: Float, var z: Float) {
   val phase = Random.nextFloat() * 10f
@@ -19,6 +41,17 @@ class Walker(val id: String, var name: String, var status: String, var desk: Int
   var walking = false
   var seated = false
   var task = ""
+  var team = ""
+  var ask = ""
+  var sleeping = false
+  var merged = 0
+  var alarm = false
+  var limited = false
+  // Walking to the gong after a merged pull request, then on to wherever it belongs.
+  var celebrate = false
+  var hold = 0f
+  // Gone from the thread list; walks out through the door and is then removed.
+  var leaving = false
   var subagents = 0
   var cabinet = -1
   var spot = -1
@@ -57,6 +90,10 @@ private const val PERSONAL_SPACE = 0.5f
 // After waiting this long a walker stops yielding for a while, so a jam always clears.
 private const val MAX_WAIT = 1.2f
 private const val GHOST_TIME = 1.5f
+private val HALF_TURN = (PI / 2).toFloat()
+private const val VACUUM_SPEED = 0.7f
+// Seconds before the end of the visit at the gong when the mallet hits.
+private const val GONG_STRIKE = 1.9f
 
 /** Who is where in the office; rendering reads it every frame. */
 class OfficeSim {
@@ -64,6 +101,13 @@ class OfficeSim {
   var time = 0f
     private set
   private var populated = false
+  val vacuum = Vacuum()
+  /** When the gong was last struck, in sim time; negative before the first time. */
+  var gongAt = -100f
+    private set
+  /** Share of agents held back by a provider limit; the lights dim with it. */
+  var limitedShare = 0f
+    private set
 
   private fun freeSpot(walker: Walker): Int {
     val taken = walkers.values.filter { it !== walker }.map { it.spot }.toSet()
@@ -76,12 +120,25 @@ class OfficeSim {
     walker.activity = Activity.NONE
     var toLane = -1
     val goal: FloorPoint
-    if (walker.cabinet >= 0) {
+    if (walker.leaving) {
+      goal = OfficeWorld.door
+      walker.goalHeading = -HALF_TURN
+    } else if (walker.celebrate) {
+      goal = OfficeWorld.gongSpot
+      walker.activity = Activity.GONG
+      walker.goalHeading = FACING_DESK
+      walker.hold = 2.5f
+    } else if (walker.cabinet >= 0) {
       goal = if (walker.status == "waiting") OfficeWorld.cabinetWaitSpot(walker.cabinet) else OfficeWorld.cabinetSeat(walker.cabinet)
       walker.goalHeading = if (walker.status == "waiting") FACING_VIEWER else FACING_DESK
     } else {
       when (walker.status) {
-        "idle" -> {
+        "idle" -> if (walker.sleeping) {
+          // Long idle: back at the desk, head down.
+          goal = OfficeWorld.seat(walker.desk)
+          walker.activity = Activity.SLEEP
+          walker.goalHeading = FACING_DESK
+        } else {
           val spot = freeSpot(walker)
           if (spot >= 0) {
             val place = OfficeWorld.spots[spot]
@@ -111,30 +168,76 @@ class OfficeSim {
     walker.pause = 9f + Random.nextFloat() * 9f
   }
 
-  fun setAgents(agents: List<OfficeAgent>) {
+  /** A free desk next to the agent's teammates, or else the one furthest from everyone. */
+  private fun pickDesk(team: String, taken: Set<Int>): Int {
+    var best = -1
+    var bestScore = Float.MAX_VALUE
+    val mates = walkers.values.filter { !it.leaving && it.team == team && team.isNotEmpty() }.map { it.desk }
+    val others = walkers.values.filter { !it.leaving }.map { it.desk }
+    for (desk in 0 until OfficeWorld.DESKS) {
+      if (taken.contains(desk)) continue
+      val here = OfficeWorld.desk(desk)
+      fun distance(other: Int): Float {
+        val there = OfficeWorld.desk(other)
+        return abs(there.x - here.x) + abs(there.z - here.z) * 1.5f
+      }
+      val score = if (mates.isNotEmpty()) mates.minOf(::distance) else -(others.minOfOrNull(::distance) ?: 0f)
+      if (score < bestScore) {
+        bestScore = score
+        best = desk
+      }
+    }
+    return if (best >= 0) best else walkers.size % OfficeWorld.DESKS
+  }
+
+  /** Applies the thread list; returns how many agents just started waiting for an answer. */
+  fun setAgents(agents: List<OfficeAgent>): Int {
     val next = LinkedHashMap<String, OfficeAgent>()
     for (agent in agents.take(OfficeWorld.DESKS)) next[agent.id] = agent
-    walkers.keys.retainAll(next.keys)
-    val taken = walkers.values.map { it.desk }.toMutableSet()
     val changed = HashSet<Walker>()
-    for (agent in next.values) {
+    var newlyWaiting = 0
+    for (walker in walkers.values.toList()) {
+      if (next.containsKey(walker.id)) continue
+      if (!populated) {
+        walkers.remove(walker.id)
+      } else if (!walker.leaving) {
+        walker.leaving = true
+        walker.celebrate = false
+        walker.cabinet = -1
+        walker.status = "idle"
+        changed.add(walker)
+      }
+    }
+    val taken = walkers.values.map { it.desk }.toMutableSet()
+    // Teammates arrive together, so the first load seats each project side by side.
+    val ordered = next.values.sortedBy { it.team }
+    for (agent in ordered) {
       val existing = walkers[agent.id]
       if (existing == null) {
-        var desk = 0
-        while (taken.contains(desk)) desk++
+        val desk = pickDesk(agent.team, taken)
         taken.add(desk)
         // On first load everyone is already at their desk; later arrivals come in through the door.
         val start = if (populated) OfficeWorld.door else OfficeWorld.seat(desk)
         val walker = Walker(agent.id, agent.name, agent.status, desk, start.x, start.z)
-        walker.task = agent.task
-        walker.subagents = agent.subagents
+        walker.team = agent.team
+        walker.merged = agent.merged
+        update(walker, agent)
         walkers[agent.id] = walker
         changed.add(walker)
       } else {
-        existing.name = agent.name
-        existing.task = agent.task
-        existing.subagents = agent.subagents
+        if (existing.leaving) {
+          existing.leaving = false
+          changed.add(existing)
+        }
+        if (populated && agent.merged > existing.merged && !existing.celebrate) {
+          existing.celebrate = true
+          changed.add(existing)
+        }
+        existing.merged = agent.merged
+        if (existing.sleeping != agent.sleeping && agent.status == "idle") changed.add(existing)
+        update(existing, agent)
         if (existing.status != agent.status) {
+          if (populated && agent.status == "waiting") newlyWaiting++
           existing.status = agent.status
           changed.add(existing)
         }
@@ -148,14 +251,31 @@ class OfficeSim {
       }
     }
     for (walker in walkers.values) {
-      if (walker.cabinet >= 0 || walker.subagents == 0) continue
+      if (walker.leaving || walker.cabinet >= 0 || walker.subagents == 0) continue
       val used = walkers.values.map { it.cabinet }.toSet()
       val free = (0 until OfficeWorld.CABINETS).firstOrNull { !used.contains(it) } ?: break
       walker.cabinet = free
       changed.add(walker)
     }
-    for (walker in changed) retarget(walker)
+    for (walker in changed) {
+      // A celebration finishes on its own; a status change waits until the gong is struck.
+      if (walker.activity == Activity.GONG && walker.celebrate && !walker.leaving) continue
+      retarget(walker)
+    }
+    val present = walkers.values.count { !it.leaving }
+    limitedShare = if (present == 0) 0f else walkers.values.count { !it.leaving && it.limited }.toFloat() / present
     populated = true
+    return newlyWaiting
+  }
+
+  private fun update(walker: Walker, agent: OfficeAgent) {
+    walker.name = agent.name
+    walker.task = agent.task
+    walker.subagents = agent.subagents
+    walker.ask = agent.ask
+    walker.sleeping = agent.sleeping
+    walker.alarm = agent.alarm
+    walker.limited = agent.limited
   }
 
   private fun stepWalker(walker: Walker, dt: Float) {
@@ -207,7 +327,17 @@ class OfficeSim {
     } else {
       walker.waited = 0f
       targetHeading = walker.goalHeading
-      if (walker.status == "idle" && walker.cabinet < 0) {
+      if (walker.leaving) {
+        gone.add(walker.id)
+      } else if (walker.activity == Activity.GONG) {
+        val before = walker.hold
+        walker.hold -= dt
+        if (before > GONG_STRIKE && walker.hold <= GONG_STRIKE) gongAt = time
+        if (walker.hold <= 0f) {
+          walker.celebrate = false
+          retarget(walker)
+        }
+      } else if (walker.status == "idle" && walker.cabinet < 0 && !walker.sleeping) {
         walker.pause -= dt
         if (walker.pause <= 0f) retarget(walker)
       }
@@ -221,14 +351,53 @@ class OfficeSim {
     walker.walking = target != null && !blocked
     val atDesk = walker.status == "working" || walker.status == "disconnected" ||
       (walker.cabinet >= 0 && walker.status != "waiting")
-    walker.seated = target == null && (atDesk || walker.activity == Activity.COUCH)
+    walker.seated = target == null &&
+      (atDesk || walker.activity == Activity.COUCH || walker.activity == Activity.SLEEP) &&
+      walker.activity != Activity.GONG && !walker.leaving
     val turn = atan2(sin(targetHeading - walker.heading), cos(targetHeading - walker.heading))
     walker.heading += turn * min(1f, dt * 10f)
   }
 
+  private val gone = ArrayList<String>()
+
   fun step(dt: Float) {
     time += dt
     for (walker in walkers.values) stepWalker(walker, dt)
+    for (id in gone) walkers.remove(id)
+    gone.clear()
+    stepVacuum(dt)
+  }
+
+  private fun stepVacuum(dt: Float) {
+    val vacuum = vacuum
+    val target = vacuum.route.firstOrNull()
+    if (target == null) {
+      vacuum.pause -= dt
+      if (vacuum.pause > 0f) return
+      vacuum.rounds++
+      val docking = vacuum.rounds % 5 == 0
+      val goal = if (docking) OfficeWorld.dock else OfficeWorld.randomFloorPoint(Random)
+      vacuum.route = OfficeWorld.route(FloorPoint(vacuum.x, vacuum.z), goal)
+      vacuum.pause = if (docking) 15f + Random.nextFloat() * 15f else 0.5f + Random.nextFloat() * 2f
+      return
+    }
+    val dx = target.x - vacuum.x
+    val dz = target.z - vacuum.z
+    val distance = hypot(dx, dz)
+    val step = VACUUM_SPEED * dt
+    if (distance <= step) {
+      vacuum.x = target.x
+      vacuum.z = target.z
+      vacuum.route.removeAt(0)
+    } else {
+      vacuum.x += dx / distance * step
+      vacuum.z += dz / distance * step
+    }
+    if (distance > 1e-3f) {
+      val goal = atan2(dx, dz)
+      val turn = atan2(sin(goal - vacuum.heading), cos(goal - vacuum.heading))
+      vacuum.heading += turn * min(1f, dt * 5f)
+    }
   }
 
   /** Whether someone is at the ping-pong table, so the ball is in play. */
@@ -257,6 +426,10 @@ class OfficeSim {
       if (walker.status == "working") {
         out.armLeft = -1.15f + sin(t * 18f) * 0.12f
         out.armRight = -1.15f + sin(t * 18f + PI.toFloat()) * 0.12f
+      } else if (walker.activity == Activity.SLEEP) {
+        out.armLeft = -1.4f
+        out.armRight = -1.4f
+        out.tilt = 0.45f + sin(t * 1.3f) * 0.03f
       } else if (walker.activity == Activity.COUCH) {
         out.armLeft = -0.35f
         out.armRight = -0.35f + sin(t * 0.8f) * 0.1f
@@ -266,6 +439,17 @@ class OfficeSim {
         out.armRight = -0.6f
       }
       if (walker.status == "disconnected") out.tilt = 0.3f
+      return
+    }
+    if (walker.activity == Activity.GONG && !walker.leaving) {
+      if (walker.hold > GONG_STRIKE) {
+        out.armLeft = 0f
+        out.armRight = -2.7f
+      } else {
+        out.armLeft = -2.9f + sin(t * 8f) * 0.2f
+        out.armRight = -2.9f + sin(t * 8f + 1f) * 0.2f
+        out.bob = abs(sin(t * 8f)) * 0.05f
+      }
       return
     }
     if (walker.status == "waiting") {

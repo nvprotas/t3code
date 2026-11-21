@@ -76,3 +76,39 @@ export function buildOfficeGroups<
       ),
   }));
 }
+
+// After this long without activity an idle agent naps at its desk.
+const NAP_AFTER_MS = 2 * 60 * 60 * 1000;
+
+type OfficeSceneInput = Pick<
+  EnvironmentThreadShell,
+  | "projectId"
+  | "hasPendingApprovals"
+  | "updatedAt"
+  | "pullRequests"
+  | "latestRun"
+  | "limitRecovery"
+  | "pendingBackgroundTasks"
+>;
+
+/** What the Android office shows about a thread beyond its status. */
+export function officeSceneFacts(thread: OfficeSceneInput, status: OfficeStatus, now: number) {
+  return {
+    team: String(thread.projectId),
+    ask:
+      status !== "waiting"
+        ? ("" as const)
+        : thread.hasPendingApprovals
+          ? ("approval" as const)
+          : ("input" as const),
+    sleeping: status === "idle" && now - Date.parse(thread.updatedAt) > NAP_AFTER_MS,
+    merged: thread.pullRequests.filter((link) => link.snapshot?.state === "merged").length,
+    alarm:
+      thread.latestRun?.status === "failed" ||
+      thread.pullRequests.some(
+        (link) => link.snapshot?.state === "open" && link.snapshot.checksState === "failing",
+      ),
+    limited: thread.limitRecovery != null,
+    subagents: thread.pendingBackgroundTasks.filter((task) => task.kind === "subagent").length,
+  };
+}

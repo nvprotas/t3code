@@ -13,7 +13,7 @@ class Part(
   val flat: Boolean = false,
 )
 
-enum class Kind { PLAIN, DESK, CABINET_DESK, RACK }
+enum class Kind { PLAIN, DESK, CABINET_DESK, RACK, GONG }
 
 /** A piece of furniture drawn as one block; its anchor decides whether walkers pass in front of it. */
 class Furniture(
@@ -328,6 +328,22 @@ internal object OfficeScenery {
         ),
       ),
     )
+    // The gong: a frame facing the room; its disc is drawn per frame so it can shake.
+    val gx = OfficeWorld.GONG_X
+    val gz = OfficeWorld.GONG_Z
+    items.add(
+      Furniture(
+        gx, 0.9f, gz,
+        listOf(
+          part(1.5f, 0.06f, 0.3f, gx, 0.03f, gz, "#3f2a1a"),
+          part(0.08f, 1.9f, 0.08f, gx - 0.68f, 0.95f, gz, "#6b4226"),
+          part(0.08f, 1.9f, 0.08f, gx + 0.68f, 0.95f, gz, "#6b4226"),
+          part(1.5f, 0.1f, 0.1f, gx, 1.9f, gz, "#6b4226"),
+          part(0.02f, 0.25f, 0.02f, gx, 1.75f, gz, "#1f2937"),
+        ),
+        Kind.GONG,
+      ),
+    )
     items.add(plant(-9.4f, -4.4f, big = true))
     items.add(plant(8.3f, -1.2f))
     items.add(plant(8.3f, 2.0f))
@@ -348,6 +364,22 @@ internal object OfficeScenery {
     Part(OfficeWorld.CABINET_WIDTH - 0.1f, 0.02f, 3.1f, OfficeWorld.cabinetX[cabinet], 0.012f, -5.4f, carpet, flat = true)
 
   fun sign(cabinet: Int) = Part(1.6f, 0.3f, 0.03f, OfficeWorld.cabinetX[cabinet], 2.72f, -HD + 0.04f, signOff, flat = true)
+
+  /** The gong's disc, moved sideways by `swing` while it rings. */
+  fun gongDisc(swing: Float) =
+    Part(0.95f, 0.95f, 0.06f, OfficeWorld.GONG_X + swing, 1.12f, OfficeWorld.GONG_Z + 0.02f, c("#d4a017"))
+
+  /** The glass of each window, drawn per frame in the colour of the sky outside. */
+  fun windowPanes(): List<Part> = OfficeWorld.cabinetX.map { wx ->
+    Part(2.0f, 1.0f, 0.07f, wx, 1.75f, -HD + 0.035f, Color.BLACK, flat = true)
+  }
+
+  fun windowBars(): List<Part> = OfficeWorld.cabinetX.map { wx ->
+    Part(0.06f, 1.0f, 0.08f, wx, 1.75f, -HD + 0.045f, c("#f8fafc"), flat = true)
+  }
+
+  /** A warning light on top of a monitor, lit while the agent's last run or CI failed. */
+  fun beacon(x: Float, z: Float) = Part(0.14f, 0.12f, 0.14f, x, 1.34f, z - 0.22f, Color.RED)
 
   /** Status lights on the front of a server rack. */
   fun rackLeds(rack: Int): List<Part> {

@@ -52,6 +52,18 @@ private val RING = Color.parseColor("#facc15")
 private val LED_ON = intArrayOf(Color.parseColor("#22c55e"), Color.parseColor("#38bdf8"), Color.parseColor("#f59e0b"))
 private val LED_OFF = Color.parseColor("#0b1220")
 private val BALL = Color.parseColor("#fff7ed")
+private val SKY_DAY = Color.parseColor("#8ecdf2")
+private val SKY_NIGHT = Color.parseColor("#0f1d3a")
+private val SKY_DUSK = Color.parseColor("#f59e0b")
+private val BEACON_DIM = Color.parseColor("#7f1d1d")
+private val BEACON_LIT = Color.parseColor("#ef4444")
+private val VACUUM = listOf(
+  Part(0.5f, 0.1f, 0.5f, 0f, 0.06f, 0f, Color.parseColor("#334155")),
+  Part(0.4f, 0.03f, 0.4f, 0f, 0.125f, -0.02f, Color.parseColor("#64748b")),
+  Part(0.3f, 0.05f, 0.06f, 0f, 0.08f, 0.25f, Color.parseColor("#0f172a")),
+)
+private val VACUUM_LED = Part(0.06f, 0.03f, 0.06f, 0f, 0.15f, 0.12f, Color.parseColor("#22c55e"), flat = true)
+private const val GONG_RING_TIME = 2.5f
 
 private fun mix(color: Int, other: Int, amount: Float): Int = Color.rgb(
   (Color.red(color) + (Color.red(other) - Color.red(color)) * amount).roundToInt(),
@@ -112,6 +124,7 @@ private const val ITEM_FURNITURE = 0
 private const val ITEM_WALKER = 1
 private const val ITEM_MINI = 2
 private const val ITEM_BALL = 3
+private const val ITEM_VACUUM = 4
 
 private class DrawItem {
   var type = 0
@@ -199,6 +212,16 @@ class OfficeRenderer(val width: Int, val height: Int) {
   private val cabinetScreens = List(OfficeWorld.CABINETS) {
     OfficeScenery.screen(OfficeWorld.cabinetX[it], OfficeWorld.CABINET_DESK_Z, 0)
   }
+  private val windowPanes = OfficeScenery.windowPanes()
+  private val windowBars = OfficeScenery.windowBars()
+  private val deskBeacons = List(OfficeWorld.DESKS) {
+    val desk = OfficeWorld.desk(it)
+    OfficeScenery.beacon(desk.x, desk.z)
+  }
+  private val cabinetBeacons = List(OfficeWorld.CABINETS) {
+    OfficeScenery.beacon(OfficeWorld.cabinetX[it], OfficeWorld.CABINET_DESK_Z)
+  }
+  private val deskAlarm = BooleanArray(OfficeWorld.DESKS)
   private val pose = Pose()
   private val blocks = ArrayList<WalkerBlock>(24)
   private val blockOrder = IntArray(24)
@@ -423,6 +446,53 @@ class OfficeRenderer(val width: Int, val height: Int) {
     drawBox(canvas, Part(ball.w, ball.h, ball.d, x, y, 5.4f, BALL, true))
   }
 
+  /** Local time of day in hours, 0 to 24. */
+  private fun hourOfDay(): Float = (((System.currentTimeMillis() + zoneOffsetMs) / 3600000.0) % 24.0).toFloat()
+
+  /** 0 in daylight, 1 at night, in between at dusk and dawn. */
+  fun nightness(): Float {
+    val h = hourOfDay()
+    return when {
+      h < 5f -> 1f
+      h < 7f -> 1f - (h - 5f) / 2f
+      h < 19f -> 0f
+      h < 21.5f -> (h - 19f) / 2.5f
+      else -> 1f
+    }
+  }
+
+  private fun skyColor(night: Float): Int {
+    val base = mix(SKY_DAY, SKY_NIGHT, night)
+    val dusk = 1f - abs(2f * night - 1f)
+    return if (night > 0f && night < 1f) mix(base, SKY_DUSK, dusk * 0.55f) else base
+  }
+
+  /** How hard the gong is still ringing, 0 to 1. */
+  fun gongRing(sim: OfficeSim): Float {
+    val since = sim.time - sim.gongAt
+    return if (since < 0f || since > GONG_RING_TIME) 0f else 1f - since / GONG_RING_TIME
+  }
+
+  fun gongX() = projectX(OfficeWorld.GONG_X, 1.12f, OfficeWorld.GONG_Z)
+
+  fun gongY() = projectY(OfficeWorld.GONG_X, 1.12f, OfficeWorld.GONG_Z)
+
+  private fun drawVacuum(canvas: Canvas, vacuum: Vacuum, time: Float) {
+    wx = vacuum.x
+    wz = vacuum.z
+    headingCos = cos(vacuum.heading)
+    headingSin = sin(vacuum.heading)
+    tiltCos = 1f
+    tiltSin = 0f
+    bob = 0f
+    k = 1f
+    hasLimb = false
+    transformed = true
+    for (part in VACUUM) drawBox(canvas, part)
+    drawBox(canvas, VACUUM_LED, if (vacuum.route.isEmpty() || (time * 2f).toInt() % 2 == 0) VACUUM_LED.color else LED_OFF)
+    transformed = false
+  }
+
   private fun drawClock(canvas: Canvas) {
     val now = System.currentTimeMillis() + zoneOffsetMs
     val minutes = (now / 60000.0) % 60.0
@@ -458,15 +528,24 @@ class OfficeRenderer(val width: Int, val height: Int) {
   /** Draws the scene in world projection; the caller applies zoom and pan to the canvas. */
   fun draw(canvas: Canvas, sim: OfficeSim, selectedId: String) {
     canvas.drawPicture(backdrop)
+    val sky = skyColor(nightness())
+    for (i in windowPanes.indices) {
+      drawBox(canvas, windowPanes[i], sky)
+      drawBox(canvas, windowBars[i])
+    }
     deskStatus.fill(null)
+    deskAlarm.fill(false)
     cabinetOwner.fill(null)
     itemCount = 0
     for (walker in sim.walkers.values) {
-      if (walker.cabinet >= 0) {
+      if (walker.leaving) {
+        // Its desk is already empty.
+      } else if (walker.cabinet >= 0) {
         cabinetOwner[walker.cabinet] = walker
         deskStatus[walker.desk] = "idle"
       } else {
-        deskStatus[walker.desk] = walker.status
+        deskStatus[walker.desk] = if (walker.activity == Activity.SLEEP) "idle" else walker.status
+        deskAlarm[walker.desk] = walker.alarm
       }
       addItem(ITEM_WALKER, 0, depth(walker.px, 0.3f, walker.pz), walker)
     }
@@ -489,6 +568,7 @@ class OfficeRenderer(val width: Int, val height: Int) {
     drawClock(canvas)
     for (i in furniture.indices) addItem(ITEM_FURNITURE, i, furnitureDepths[i])
     if (sim.pingPongPlayers() >= 2) addItem(ITEM_BALL, 0, depth(-1.5f, 0.9f, 5.4f))
+    addItem(ITEM_VACUUM, 0, depth(sim.vacuum.x, 0.1f, sim.vacuum.z))
     items.subList(0, itemCount).sortBy { it.depth }
     for (n in 0 until itemCount) {
       val item = items[n]
@@ -497,6 +577,7 @@ class OfficeRenderer(val width: Int, val height: Int) {
         ITEM_WALKER -> item.walker?.let { drawWalker(canvas, sim, it, it.id == selectedId) }
         ITEM_MINI -> item.walker?.let { drawMini(canvas, sim, it, item.index) }
         ITEM_BALL -> drawBall(canvas, sim.time)
+        ITEM_VACUUM -> drawVacuum(canvas, sim.vacuum, sim.time)
       }
     }
   }
@@ -508,15 +589,23 @@ class OfficeRenderer(val width: Int, val height: Int) {
       Kind.DESK -> {
         val color = OfficeScenery.screenColors[deskStatus[item.index] ?: "empty"] ?: Color.BLACK
         drawBox(canvas, deskScreens[item.index], color)
+        if (deskAlarm[item.index]) drawBox(canvas, deskBeacons[item.index], beaconColor(sim.time))
       }
       Kind.CABINET_DESK -> {
-        val status = cabinetOwner[item.index]?.status ?: "empty"
-        drawBox(canvas, cabinetScreens[item.index], OfficeScenery.screenColors[status] ?: Color.BLACK)
+        val owner = cabinetOwner[item.index]
+        drawBox(canvas, cabinetScreens[item.index], OfficeScenery.screenColors[owner?.status ?: "empty"] ?: Color.BLACK)
+        if (owner?.alarm == true) drawBox(canvas, cabinetBeacons[item.index], beaconColor(sim.time))
       }
       Kind.RACK -> drawRack(canvas, item.index, sim.time)
+      Kind.GONG -> {
+        val ring = gongRing(sim)
+        drawBox(canvas, OfficeScenery.gongDisc(sin(sim.time * 40f) * 0.05f * ring))
+      }
       Kind.PLAIN -> Unit
     }
   }
+
+  private fun beaconColor(time: Float) = mix(BEACON_DIM, BEACON_LIT, (sin(time * 8f) + 1f) / 2f)
 
   /** The agent under a point in unzoomed view coordinates. */
   fun pick(sim: OfficeSim, x: Float, y: Float, radius: Float): String? {
