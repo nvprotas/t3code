@@ -328,6 +328,41 @@ internal object OfficeScenery {
         ),
       ),
     )
+    // Low fences around each project pod, open at the front and where the middle lane passes.
+    val fence = "#b8c7d4"
+    val rail = "#64748b"
+    for (pod in 0 until OfficeWorld.PODS) {
+      val cx = OfficeWorld.podX[pod]
+      val half = OfficeWorld.POD_HALF_WIDTH
+      val back = OfficeWorld.POD_BACK
+      items.add(
+        Furniture(
+          cx, 0.3f, back,
+          listOf(
+            part(half * 2f, 0.5f, 0.06f, cx, 0.25f, back, fence),
+            part(half * 2f, 0.05f, 0.1f, cx, 0.52f, back, rail),
+          ),
+        ),
+      )
+      val gapLow = OfficeWorld.lanes[1] - 0.45f
+      val gapHigh = OfficeWorld.lanes[1] + 0.45f
+      for (side in floatArrayOf(-1f, 1f)) {
+        val sx = cx + side * half
+        for ((from, to) in listOf(back to gapLow, gapHigh to OfficeWorld.POD_FRONT)) {
+          val mid = (from + to) / 2f
+          items.add(
+            Furniture(
+              sx, 0.3f, mid,
+              listOf(
+                part(0.06f, 0.5f, to - from, sx, 0.25f, mid, fence),
+                part(0.1f, 0.05f, to - from, sx, 0.52f, mid, rail),
+                part(0.1f, 0.6f, 0.1f, sx, 0.3f, to, rail),
+              ),
+            ),
+          )
+        }
+      }
+    }
     // The gong: a frame facing the room; its disc is drawn per frame so it can shake.
     val gx = OfficeWorld.GONG_X
     val gz = OfficeWorld.GONG_Z
@@ -364,6 +399,18 @@ internal object OfficeScenery {
     Part(OfficeWorld.CABINET_WIDTH - 0.1f, 0.02f, 3.1f, OfficeWorld.cabinetX[cabinet], 0.012f, -5.4f, carpet, flat = true)
 
   fun sign(cabinet: Int) = Part(1.6f, 0.3f, 0.03f, OfficeWorld.cabinetX[cabinet], 2.72f, -HD + 0.04f, signOff, flat = true)
+
+  /** The floor of a project pod, tinted with the project's colour while one holds it. */
+  fun podRug(pod: Int) = Part(
+    OfficeWorld.POD_HALF_WIDTH * 2f - 0.1f,
+    0.02f,
+    OfficeWorld.POD_FRONT - OfficeWorld.POD_BACK - 0.1f,
+    OfficeWorld.podX[pod],
+    0.011f,
+    (OfficeWorld.POD_FRONT + OfficeWorld.POD_BACK) / 2f,
+    carpet,
+    flat = true,
+  )
 
   /** The gong's disc, moved sideways by `swing` while it rings. */
   fun gongDisc(swing: Float) =

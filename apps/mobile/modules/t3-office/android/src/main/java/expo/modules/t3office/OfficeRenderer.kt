@@ -222,6 +222,7 @@ class OfficeRenderer(val width: Int, val height: Int) {
     OfficeScenery.beacon(OfficeWorld.cabinetX[it], OfficeWorld.CABINET_DESK_Z)
   }
   private val deskAlarm = BooleanArray(OfficeWorld.DESKS)
+  private val podRugs = List(OfficeWorld.PODS) { OfficeScenery.podRug(it) }
   private val pose = Pose()
   private val blocks = ArrayList<WalkerBlock>(24)
   private val blockOrder = IntArray(24)
@@ -473,6 +474,11 @@ class OfficeRenderer(val width: Int, val height: Int) {
     return if (since < 0f || since > GONG_RING_TIME) 0f else 1f - since / GONG_RING_TIME
   }
 
+  /** Where a pod's sign hangs: over the back fence, on the left. */
+  fun podSignX(pod: Int) = projectX(OfficeWorld.podX[pod], 0.75f, OfficeWorld.POD_BACK)
+
+  fun podSignY(pod: Int) = projectY(OfficeWorld.podX[pod], 0.75f, OfficeWorld.POD_BACK)
+
   fun gongX() = projectX(OfficeWorld.GONG_X, 1.12f, OfficeWorld.GONG_Z)
 
   fun gongY() = projectY(OfficeWorld.GONG_X, 1.12f, OfficeWorld.GONG_Z)
@@ -532,6 +538,10 @@ class OfficeRenderer(val width: Int, val height: Int) {
     for (i in windowPanes.indices) {
       drawBox(canvas, windowPanes[i], sky)
       drawBox(canvas, windowBars[i])
+    }
+    for (pod in 0 until OfficeWorld.PODS) {
+      val team = sim.podTeam[pod] ?: continue
+      drawBox(canvas, podRugs[pod], mix(OfficeScenery.carpet, OfficeWorld.colors(team)[1], 0.45f))
     }
     deskStatus.fill(null)
     deskAlarm.fill(false)

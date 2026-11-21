@@ -17,6 +17,7 @@ export interface OfficeAgent {
   readonly subagents?: number;
   // Read only by the Android scene.
   readonly team?: string;
+  readonly teamName?: string;
   readonly ask?: "approval" | "input" | "";
   readonly quietSince?: number;
   readonly merged?: number;

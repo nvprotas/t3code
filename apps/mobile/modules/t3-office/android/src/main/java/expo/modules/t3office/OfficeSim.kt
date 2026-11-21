@@ -16,6 +16,7 @@ class OfficeAgent(
   val status: String,
   val subagents: Int,
   val team: String = "",
+  val teamName: String = "",
   val ask: String = "",
   val quietSince: Long = 0L,
   val merged: Int = 0,
@@ -42,6 +43,7 @@ class Walker(val id: String, var name: String, var status: String, var desk: Int
   var seated = false
   var task = ""
   var team = ""
+  var teamName = ""
   var ask = ""
   var quietSince = 0L
   var sleeping = false
@@ -110,6 +112,9 @@ class OfficeSim {
   /** When the gong was last struck, in sim time; negative before the first time. */
   var gongAt = -100f
     private set
+  /** Which project holds each pod, and its name for the sign; null while a pod is shared. */
+  val podTeam = arrayOfNulls<String>(OfficeWorld.PODS)
+  val podName = arrayOfNulls<String>(OfficeWorld.PODS)
   /** Share of agents held back by a provider limit; the lights dim with it. */
   var limitedShare = 0f
     private set
@@ -173,26 +178,61 @@ class OfficeSim {
     walker.pause = 9f + Random.nextFloat() * 9f
   }
 
-  /** A free desk next to the agent's teammates, or else the one furthest from everyone. */
-  private fun pickDesk(team: String, taken: Set<Int>): Int {
-    var best = -1
-    var bestScore = Float.MAX_VALUE
-    val mates = walkers.values.filter { !it.leaving && it.team == team && team.isNotEmpty() }.map { it.desk }
-    val others = walkers.values.filter { !it.leaving }.map { it.desk }
-    for (desk in 0 until OfficeWorld.DESKS) {
-      if (taken.contains(desk)) continue
-      val here = OfficeWorld.desk(desk)
-      fun distance(other: Int): Float {
-        val there = OfficeWorld.desk(other)
-        return abs(there.x - here.x) + abs(there.z - here.z) * 1.5f
-      }
-      val score = if (mates.isNotEmpty()) mates.minOf(::distance) else -(others.minOfOrNull(::distance) ?: 0f)
-      if (score < bestScore) {
-        bestScore = score
-        best = desk
+  /**
+   * Lends each pod to one project, biggest projects first, keeping pods where they are when it
+   * can; then moves anyone sitting in another project's pod. Returns who changed desks.
+   */
+  private fun arrangeTeams(): List<Walker> {
+    val present = walkers.values.filter { !it.leaving }
+    val sizes = HashMap<String, Int>()
+    for (walker in present) if (walker.team.isNotEmpty()) sizes[walker.team] = (sizes[walker.team] ?: 0) + 1
+    val teams = sizes.keys.sortedWith(compareBy<String>({ -(sizes[it] ?: 0) }, { it }))
+    val owner = arrayOfNulls<String>(OfficeWorld.PODS)
+    val need = HashMap<String, Int>()
+    for (team in teams) need[team] = ((sizes[team] ?: 0) + OfficeWorld.DESKS_PER_POD - 1) / OfficeWorld.DESKS_PER_POD
+    for (pod in 0 until OfficeWorld.PODS) {
+      val team = podTeam[pod] ?: continue
+      val left = need[team] ?: 0
+      if (left > 0) {
+        owner[pod] = team
+        need[team] = left - 1
       }
     }
-    return if (best >= 0) best else walkers.size % OfficeWorld.DESKS
+    for (team in teams) {
+      while ((need[team] ?: 0) > 0) {
+        val pod = (0 until OfficeWorld.PODS).filter { owner[it] == null }.maxByOrNull { pod ->
+          OfficeWorld.podDesks(pod).count { desk -> present.any { it.desk == desk && it.team == team } } * 10 - pod
+        } ?: break
+        owner[pod] = team
+        need[team] = (need[team] ?: 1) - 1
+      }
+    }
+    for (pod in 0 until OfficeWorld.PODS) {
+      podTeam[pod] = owner[pod]
+      podName[pod] = owner[pod]?.let { team -> present.firstOrNull { it.team == team }?.teamName }
+    }
+    val occupied = HashMap<Int, Walker>()
+    for (walker in present) if (walker.desk >= 0 && !occupied.containsKey(walker.desk)) occupied[walker.desk] = walker
+    fun ownPods(team: String) = (0 until OfficeWorld.PODS).filter { owner[it] == team }
+    fun freeIn(pods: List<Int>) = pods.flatMap { OfficeWorld.podDesks(it).toList() }.firstOrNull { !occupied.containsKey(it) }
+    val moving = present.filter { walker ->
+      if (walker.desk < 0 || occupied[walker.desk] !== walker) return@filter true
+      val pod = OfficeWorld.podOf(walker.desk)
+      when (owner[pod]) {
+        walker.team -> false
+        null -> freeIn(ownPods(walker.team)) != null
+        else -> true
+      }
+    }
+    for (walker in moving) if (walker.desk >= 0 && occupied[walker.desk] === walker) occupied.remove(walker.desk)
+    val shared = (0 until OfficeWorld.PODS).filter { owner[it] == null }
+    for (walker in moving) {
+      val desk = freeIn(ownPods(walker.team)) ?: freeIn(shared)
+        ?: (0 until OfficeWorld.DESKS).firstOrNull { !occupied.containsKey(it) } ?: 0
+      walker.desk = desk
+      occupied[desk] = walker
+    }
+    return moving
   }
 
   /** Applies the thread list; returns how many agents just started waiting for an answer. */
@@ -213,18 +253,11 @@ class OfficeSim {
         changed.add(walker)
       }
     }
-    val taken = walkers.values.map { it.desk }.toMutableSet()
-    // Teammates arrive together, so the first load seats each project side by side.
-    val ordered = next.values.sortedBy { it.team }
-    for (agent in ordered) {
+    for (agent in next.values) {
       val existing = walkers[agent.id]
       if (existing == null) {
-        val desk = pickDesk(agent.team, taken)
-        taken.add(desk)
-        // On first load everyone is already at their desk; later arrivals come in through the door.
-        val start = if (populated) OfficeWorld.door else OfficeWorld.seat(desk)
-        val walker = Walker(agent.id, agent.name, agent.status, desk, start.x, start.z)
-        walker.team = agent.team
+        val start = OfficeWorld.door
+        val walker = Walker(agent.id, agent.name, agent.status, -1, start.x, start.z)
         walker.merged = agent.merged
         update(walker, agent)
         walkers[agent.id] = walker
@@ -248,6 +281,17 @@ class OfficeSim {
         update(existing, agent)
         if (existing.sleeping != wasSleeping) changed.add(existing)
       }
+    }
+    for (walker in arrangeTeams()) {
+      // On first load everyone is already at their desk; later arrivals come in through the door.
+      if (!populated) {
+        val seat = OfficeWorld.seat(walker.desk)
+        walker.x = seat.x
+        walker.z = seat.z
+        walker.px = seat.x
+        walker.pz = seat.z
+      }
+      if (walker.cabinet < 0 && (walker.status != "idle" || walker.sleeping)) changed.add(walker)
     }
     // A thread leaves its office once its subagents finish; others waiting for one move in.
     for (walker in walkers.values) {
@@ -277,6 +321,8 @@ class OfficeSim {
   private fun update(walker: Walker, agent: OfficeAgent) {
     walker.name = agent.name
     walker.task = agent.task
+    walker.team = agent.team
+    walker.teamName = agent.teamName
     walker.subagents = agent.subagents
     walker.ask = agent.ask
     walker.quietSince = agent.quietSince

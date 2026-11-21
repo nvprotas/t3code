@@ -12,7 +12,9 @@ import { uuidv4 } from "../../lib/uuid";
 import { NativeWorkspaceTabActivityContext } from "../../native/v5-workspace-context";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { steadyNavigationThreadShellsAtom } from "../../state/threads";
+import { useProjects } from "../../state/entities";
 import { useWorkspaceEnvironments } from "../../state/workspace";
+import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { OfficeAgentCard } from "./OfficeAgentCard";
@@ -57,6 +59,11 @@ export function OfficeScreen() {
   const selectDetail = useSelectWorkspaceDetail();
   const environments = useWorkspaceEnvironments();
   const threads = useAtomValue(steadyNavigationThreadShellsAtom);
+  const projects = useProjects();
+  const { startNewTask } = useAdaptiveWorkspaceLayout();
+  const projectTitles = new Map(
+    projects.map((project) => [`${project.environmentId}/${project.id}`, project.title]),
+  );
   const groups = buildOfficeGroups(environments, threads);
   const rows = groups.flatMap((group) => group.rows);
   // Threads of unreachable environments stay in the list below but get no one in the room.
@@ -71,6 +78,7 @@ export function OfficeScreen() {
     task: officeTask(row.thread.title),
     status: row.status,
     ...officeSceneFacts(row.thread, row.status),
+    teamName: projectTitles.get(`${row.thread.environmentId}/${row.thread.projectId}`) ?? "",
   }));
   const selectedGroup = groups.find((group) =>
     group.rows.some((row) => String(row.thread.id) === selectedId),
@@ -127,7 +135,7 @@ export function OfficeScreen() {
                 </Suspense>
               </RenderErrorBoundary>
               {Platform.OS === "android" ? (
-                <View className="absolute right-3 top-3 flex-row gap-2">
+                <View className="absolute left-3 right-3 top-3 flex-row flex-wrap justify-end gap-2">
                   {waiting.length > 0 ? (
                     <CameraButton
                       label={gt("Waiting ({count})", { count: waiting.length })}
@@ -135,6 +143,7 @@ export function OfficeScreen() {
                     />
                   ) : null}
                   <CameraButton label={gt("Overview")} onPress={() => moveCamera("overview")} />
+                  <CameraButton label={gt("+ Thread")} onPress={startNewTask} />
                 </View>
               ) : null}
               {selected && selectedGroup ? (

@@ -100,6 +100,7 @@ class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context,
           item.optString("status", "idle"),
           item.optInt("subagents", 0),
           item.optString("team"),
+          item.optString("teamName"),
           item.optString("ask"),
           item.optLong("quietSince", 0L),
           item.optInt("merged", 0),
@@ -291,7 +292,7 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
   // Label layout scratch space, reused every frame.
   private val order = arrayOfNulls<Walker>(MAX_LABELS)
   private val rank = IntArray(MAX_LABELS)
-  private val placed = FloatArray(MAX_LABELS * 4)
+  private val placed = FloatArray((MAX_LABELS + OfficeWorld.PODS) * 4)
 
   // One-finger zoom: double tap, then drag up or down without lifting.
   private var dragZoom = false
@@ -454,7 +455,7 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
     }
     // Show the task line only when figures are big enough to tell apart.
     val detailed = renderer.pixelsPerUnit * host.zoom > 26f * density
-    var drawn = 0
+    var drawn = drawPodSigns(canvas, renderer)
     for (i in 0 until count) {
       val walker = order[i]!!
       val important = rank[i] < 2
@@ -506,6 +507,32 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
       drawLabel(canvas, name, task, left, top, right, bottom, x, walker)
       if (walker.status == "waiting") drawAlert(canvas, x, top - 3f * density, host.sim.time, if (walker.ask == "approval") "!" else "?")
     }
+  }
+
+  /** Each project pod's name over its back fence; returns how many tag slots they took. */
+  private fun drawPodSigns(canvas: Canvas, renderer: OfficeRenderer): Int {
+    var drawn = 0
+    for (pod in 0 until OfficeWorld.PODS) {
+      val team = host.sim.podTeam[pod] ?: continue
+      val name = clip(host.sim.podName[pod] ?: continue, 20)
+      val x = renderer.podSignX(pod) * host.zoom + host.panX
+      val y = renderer.podSignY(pod) * host.zoom + host.panY
+      val textWidth = namePaint.measureText(name)
+      val left = x - textWidth / 2f - 6f * density
+      val right = x + textWidth / 2f + 6f * density
+      val top = y - namePaint.textSize - 6f * density
+      pill.set(left, top, right, y)
+      pillPaint.color = OfficeWorld.colors(team)[1]
+      canvas.drawRoundRect(pill, 4f * density, 4f * density, pillPaint)
+      namePaint.color = Color.WHITE
+      canvas.drawText(name, x, y - 4f * density, namePaint)
+      placed[drawn * 4] = left
+      placed[drawn * 4 + 1] = top
+      placed[drawn * 4 + 2] = right
+      placed[drawn * 4 + 3] = y
+      drawn++
+    }
+    return drawn
   }
 
   private fun overlaps(left: Float, top: Float, right: Float, bottom: Float, drawn: Int, margin: Float): Boolean {

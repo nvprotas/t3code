@@ -79,6 +79,7 @@ export function buildOfficeGroups<
 
 type OfficeSceneInput = Pick<
   EnvironmentThreadShell,
+  | "environmentId"
   | "projectId"
   | "hasPendingApprovals"
   | "updatedAt"
@@ -91,7 +92,7 @@ type OfficeSceneInput = Pick<
 /** What the Android office shows about a thread beyond its status. */
 export function officeSceneFacts(thread: OfficeSceneInput, status: OfficeStatus) {
   return {
-    team: String(thread.projectId),
+    team: `${thread.environmentId}/${thread.projectId}`,
     ask:
       status !== "waiting"
         ? ("" as const)

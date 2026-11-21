@@ -86,6 +86,7 @@ describe("officeSceneFacts", () => {
     ({ snapshot: { state, checksState } }) as unknown as SceneInput["pullRequests"][number];
   const scene = (overrides: Partial<SceneInput> = {}): SceneInput =>
     ({
+      environmentId: "environment-1",
       projectId: "project-1",
       hasPendingApprovals: false,
       updatedAt: "2026-01-01T11:00:00.000Z",

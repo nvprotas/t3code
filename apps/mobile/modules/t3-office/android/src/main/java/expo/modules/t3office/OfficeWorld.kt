@@ -66,6 +66,18 @@ internal object OfficeWorld {
   const val PING_PONG_LEFT = 6
   const val PING_PONG_RIGHT = 7
 
+  // The open-plan desks split into fenced pods of four, each lent to one project.
+  const val PODS = 3
+  const val DESKS_PER_POD = 4
+  val podX = floatArrayOf(-4.8f, 0f, 4.8f)
+  const val POD_HALF_WIDTH = 2.25f
+  const val POD_BACK = -1.95f
+  const val POD_FRONT = 3.35f
+
+  fun podOf(desk: Int) = (desk % columns.size) / 2
+
+  fun podDesks(pod: Int) = intArrayOf(pod * 2, pod * 2 + 1, columns.size + pod * 2, columns.size + pod * 2 + 1)
+
   fun desk(index: Int) = FloorPoint(columns[index % columns.size], rows[(index / columns.size) % rows.size])
 
   fun seat(index: Int): FloorPoint {
@@ -73,9 +85,10 @@ internal object OfficeWorld {
     return FloorPoint(desk.x, desk.z + SEAT_OFFSET)
   }
 
+  /** Behind the chair, so the waiting agent stays inside its pod's fence. */
   fun deskWaitSpot(index: Int): FloorPoint {
     val seat = seat(index)
-    return FloorPoint(seat.x + 1.2f, seat.z)
+    return FloorPoint(seat.x + 0.35f, seat.z + 0.75f)
   }
 
   fun cabinetSeat(cabinet: Int) = FloorPoint(cabinetX[cabinet], CABINET_DESK_Z + SEAT_OFFSET)
