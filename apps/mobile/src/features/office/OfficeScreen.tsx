@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { CommandId, MessageId } from "@t3tools/contracts";
+import { CommandId, MessageId, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import { useGT, useLocale } from "gt-react-native";
 import { lazy, Suspense, use, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
@@ -40,6 +40,22 @@ function CameraButton(props: { readonly label: string; readonly onPress: () => v
       <Text className="font-t3-bold text-white">{props.label}</Text>
     </Pressable>
   );
+}
+
+function sendToThread(
+  thread: { readonly environmentId: EnvironmentId; readonly id: ThreadId },
+  text: string,
+) {
+  return enqueueThreadOutboxMessage({
+    environmentId: thread.environmentId,
+    threadId: thread.id,
+    messageId: MessageId.make(uuidv4()),
+    commandId: CommandId.make(uuidv4()),
+    text,
+    attachments: [],
+    dispatchMode: "auto",
+    createdAt: new Date().toISOString(),
+  });
 }
 
 export function OfficeScreen() {
@@ -160,18 +176,7 @@ export function OfficeScreen() {
                       })
                     }
                     onClose={() => setSelectedId(undefined)}
-                    onSend={(text) =>
-                      enqueueThreadOutboxMessage({
-                        environmentId: selected.thread.environmentId,
-                        threadId: selected.thread.id,
-                        messageId: MessageId.make(uuidv4()),
-                        commandId: CommandId.make(uuidv4()),
-                        text,
-                        attachments: [],
-                        dispatchMode: "auto",
-                        createdAt: new Date().toISOString(),
-                      })
-                    }
+                    onSend={(text) => sendToThread(selected.thread, text)}
                   />
                 </View>
               ) : null}
