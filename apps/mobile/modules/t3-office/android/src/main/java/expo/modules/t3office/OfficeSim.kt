@@ -17,7 +17,7 @@ class OfficeAgent(
   val subagents: Int,
   val team: String = "",
   val ask: String = "",
-  val sleeping: Boolean = false,
+  val quietSince: Long = 0L,
   val merged: Int = 0,
   val alarm: Boolean = false,
   val limited: Boolean = false,
@@ -43,6 +43,7 @@ class Walker(val id: String, var name: String, var status: String, var desk: Int
   var task = ""
   var team = ""
   var ask = ""
+  var quietSince = 0L
   var sleeping = false
   var merged = 0
   var alarm = false
@@ -92,6 +93,7 @@ private const val MAX_WAIT = 1.2f
 private const val GHOST_TIME = 1.5f
 private val HALF_TURN = (PI / 2).toFloat()
 private const val VACUUM_SPEED = 0.7f
+private const val NAP_AFTER_MS = 2 * 60 * 60 * 1000L
 // Seconds before the end of the visit at the gong when the mallet hits.
 private const val GONG_STRIKE = 1.9f
 
@@ -234,13 +236,14 @@ class OfficeSim {
           changed.add(existing)
         }
         existing.merged = agent.merged
-        if (existing.sleeping != agent.sleeping && agent.status == "idle") changed.add(existing)
-        update(existing, agent)
+        val wasSleeping = existing.sleeping
         if (existing.status != agent.status) {
           if (populated && agent.status == "waiting") newlyWaiting++
           existing.status = agent.status
           changed.add(existing)
         }
+        update(existing, agent)
+        if (existing.sleeping != wasSleeping) changed.add(existing)
       }
     }
     // A thread leaves its office once its subagents finish; others waiting for one move in.
@@ -273,7 +276,8 @@ class OfficeSim {
     walker.task = agent.task
     walker.subagents = agent.subagents
     walker.ask = agent.ask
-    walker.sleeping = agent.sleeping
+    walker.quietSince = agent.quietSince
+    walker.sleeping = asleep(walker)
     walker.alarm = agent.alarm
     walker.limited = agent.limited
   }
@@ -359,12 +363,30 @@ class OfficeSim {
   }
 
   private val gone = ArrayList<String>()
+  private var napCheck = 0f
+
+  private fun asleep(walker: Walker) = walker.status == "idle" && walker.quietSince > 0L &&
+    System.currentTimeMillis() - walker.quietSince > NAP_AFTER_MS
+
+  /** Idle agents doze off after a long quiet spell, even when nothing else changes. */
+  private fun checkNaps(dt: Float) {
+    napCheck -= dt
+    if (napCheck > 0f) return
+    napCheck = 20f
+    for (walker in walkers.values) {
+      val sleeping = asleep(walker)
+      if (sleeping == walker.sleeping) continue
+      walker.sleeping = sleeping
+      if (!walker.leaving && !walker.celebrate && walker.cabinet < 0) retarget(walker)
+    }
+  }
 
   fun step(dt: Float) {
     time += dt
     for (walker in walkers.values) stepWalker(walker, dt)
     for (id in gone) walkers.remove(id)
     gone.clear()
+    checkNaps(dt)
     stepVacuum(dt)
   }
 

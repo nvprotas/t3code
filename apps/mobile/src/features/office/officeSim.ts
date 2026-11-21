@@ -18,7 +18,7 @@ export interface OfficeAgent {
   // Read only by the Android scene.
   readonly team?: string;
   readonly ask?: "approval" | "input" | "";
-  readonly sleeping?: boolean;
+  readonly quietSince?: number;
   readonly merged?: number;
   readonly alarm?: boolean;
   readonly limited?: boolean;

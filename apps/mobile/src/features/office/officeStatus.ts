@@ -77,9 +77,6 @@ export function buildOfficeGroups<
   }));
 }
 
-// After this long without activity an idle agent naps at its desk.
-const NAP_AFTER_MS = 2 * 60 * 60 * 1000;
-
 type OfficeSceneInput = Pick<
   EnvironmentThreadShell,
   | "projectId"
@@ -92,7 +89,7 @@ type OfficeSceneInput = Pick<
 >;
 
 /** What the Android office shows about a thread beyond its status. */
-export function officeSceneFacts(thread: OfficeSceneInput, status: OfficeStatus, now: number) {
+export function officeSceneFacts(thread: OfficeSceneInput, status: OfficeStatus) {
   return {
     team: String(thread.projectId),
     ask:
@@ -101,7 +98,8 @@ export function officeSceneFacts(thread: OfficeSceneInput, status: OfficeStatus,
         : thread.hasPendingApprovals
           ? ("approval" as const)
           : ("input" as const),
-    sleeping: status === "idle" && now - Date.parse(thread.updatedAt) > NAP_AFTER_MS,
+    // The scene compares this with the clock itself, so an idle agent dozes off on time.
+    quietSince: Date.parse(thread.updatedAt) || 0,
     merged: thread.pullRequests.filter((link) => link.snapshot?.state === "merged").length,
     alarm:
       thread.latestRun?.status === "failed" ||

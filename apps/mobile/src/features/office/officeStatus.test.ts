@@ -82,7 +82,6 @@ describe("buildOfficeGroups", () => {
 
 describe("officeSceneFacts", () => {
   type SceneInput = Parameters<typeof officeSceneFacts>[0];
-  const now = Date.parse("2026-01-01T12:00:00.000Z");
   const pr = (state: string, checksState: string | null) =>
     ({ snapshot: { state, checksState } }) as unknown as SceneInput["pullRequests"][number];
   const scene = (overrides: Partial<SceneInput> = {}): SceneInput =>
@@ -97,27 +96,20 @@ describe("officeSceneFacts", () => {
       ...overrides,
     }) as SceneInput;
 
-  it("tells an approval from a question, and naps only after two idle hours", () => {
-    expect(officeSceneFacts(scene({ hasPendingApprovals: true }), "waiting", now).ask).toBe(
-      "approval",
-    );
-    expect(officeSceneFacts(scene(), "waiting", now).ask).toBe("input");
-    expect(officeSceneFacts(scene(), "idle", now).sleeping).toBe(false);
-    const stale = scene({ updatedAt: "2026-01-01T09:00:00.000Z" });
-    expect(officeSceneFacts(stale, "idle", now).sleeping).toBe(true);
-    expect(officeSceneFacts(stale, "working", now).sleeping).toBe(false);
+  it("tells an approval from a question", () => {
+    expect(officeSceneFacts(scene({ hasPendingApprovals: true }), "waiting").ask).toBe("approval");
+    expect(officeSceneFacts(scene(), "waiting").ask).toBe("input");
   });
 
   it("counts merged pull requests and raises the alarm only for failing open ones", () => {
     const facts = officeSceneFacts(
       scene({ pullRequests: [pr("merged", "failing"), pr("open", "passing")] }),
       "idle",
-      now,
     );
     expect(facts.merged).toBe(1);
     expect(facts.alarm).toBe(false);
-    expect(
-      officeSceneFacts(scene({ pullRequests: [pr("open", "failing")] }), "idle", now).alarm,
-    ).toBe(true);
+    expect(officeSceneFacts(scene({ pullRequests: [pr("open", "failing")] }), "idle").alarm).toBe(
+      true,
+    );
   });
 });
