@@ -89,6 +89,8 @@ export function OfficeScene(props: {
   readonly selectedId: string | undefined;
   readonly onSelectAgent: (id: string | undefined) => void;
   readonly onLockScroll: (locked: boolean) => void;
+  /** Camera moves; only the Android scene has a camera to move. */
+  readonly focusRequest?: string;
 }) {
   const gt = useGT();
   const [width, setWidth] = useState(0);

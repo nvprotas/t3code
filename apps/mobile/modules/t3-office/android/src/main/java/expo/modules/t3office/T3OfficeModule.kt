@@ -11,6 +11,7 @@ class T3OfficeModule : Module() {
       Prop("agentsJson") { view: T3OfficeView, json: String -> view.setAgentsJson(json) }
       Prop("selectedId") { view: T3OfficeView, id: String -> view.setSelectedId(id) }
       Prop("active") { view: T3OfficeView, active: Boolean -> view.setActive(active) }
+      Prop("focusRequest") { view: T3OfficeView, request: String -> view.setFocusRequest(request) }
       Events("onSelectAgent", "onRendered")
       OnViewDestroys { view: T3OfficeView -> view.cleanup() }
     }

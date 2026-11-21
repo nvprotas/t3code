@@ -8,34 +8,18 @@ import type { OfficeStatus } from "./officeStatus";
 
 interface OfficeAgentThread {
   readonly title: string;
-  readonly branch: string | null;
-  readonly itemCount: number;
-  readonly createdAt: string;
   readonly updatedAt: string;
   readonly runtime: {
     readonly providerName: string | null;
     readonly lastError: string | null;
   } | null;
-  readonly pendingBackgroundTasks: readonly unknown[];
 }
 
-function Stat(props: { readonly label: string; readonly value: string }) {
-  return (
-    <View className="min-w-0 flex-1 gap-0.5">
-      <Text textRole="caption" className="text-foreground-muted">
-        {props.label}
-      </Text>
-      <Text className="font-t3-bold text-foreground" numberOfLines={1}>
-        {props.value}
-      </Text>
-    </View>
-  );
-}
-
-/** What the tapped agent is doing, in the spirit of the T3 office stats. */
+/** The tapped agent, laid over the bottom of the scene so it stays under the thumb. */
 export function OfficeAgentCard(props: {
   readonly thread: OfficeAgentThread;
   readonly status: OfficeStatus;
+  readonly name: string;
   readonly environment: string;
   readonly onOpen: () => void;
   readonly onClose: () => void;
@@ -50,43 +34,31 @@ export function OfficeAgentCard(props: {
         : props.status === "disconnected"
           ? gt("Disconnected")
           : gt("Idle");
+  const details = [
+    props.name,
+    status,
+    thread.runtime?.providerName,
+    gt("{time} ago", { time: relativeTime(thread.updatedAt) }),
+    props.environment,
+  ].filter(Boolean);
   return (
-    <View className="gap-3 rounded-2xl border border-border bg-card p-4">
+    <View className="gap-2 rounded-2xl border border-border bg-card p-3">
       <View className="gap-0.5">
         <Text className="font-t3-bold text-foreground" numberOfLines={2}>
           {thread.title}
         </Text>
         <Text textRole="caption" className="text-foreground-muted" numberOfLines={1}>
-          {props.environment}
+          {details.join(" · ")}
         </Text>
       </View>
-      <View className="flex-row gap-3">
-        <Stat label={gt("Status")} value={status} />
-        <Stat label={gt("Provider")} value={thread.runtime?.providerName ?? gt("Unknown")} />
-      </View>
-      <View className="flex-row gap-3">
-        <Stat label={gt("Items")} value={String(thread.itemCount)} />
-        <Stat
-          label={gt("Last activity")}
-          value={gt("{time} ago", { time: relativeTime(thread.updatedAt) })}
-        />
-      </View>
-      <View className="flex-row gap-3">
-        <Stat
-          label={gt("Started")}
-          value={gt("{time} ago", { time: relativeTime(thread.createdAt) })}
-        />
-        <Stat label={gt("Background tasks")} value={String(thread.pendingBackgroundTasks.length)} />
-      </View>
-      {thread.branch ? <Stat label={gt("Branch")} value={thread.branch} /> : null}
       {thread.runtime?.lastError ? (
-        <Text textRole="caption" className="text-danger-foreground" numberOfLines={3}>
+        <Text textRole="caption" className="text-danger-foreground" numberOfLines={2}>
           {thread.runtime.lastError}
         </Text>
       ) : null}
       <View className="flex-row gap-2">
-        <Button label={gt("Open thread")} onPress={props.onOpen} tone="primary" />
-        <Button label={gt("Close")} onPress={props.onClose} />
+        <Button label={gt("Open thread")} onPress={props.onOpen} tone="primary" size="compact" />
+        <Button label={gt("Close")} onPress={props.onClose} size="compact" />
       </View>
     </View>
   );

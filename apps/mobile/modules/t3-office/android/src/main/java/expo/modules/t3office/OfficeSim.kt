@@ -9,7 +9,7 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
-class OfficeAgent(val id: String, val name: String, val status: String, val subagents: Int)
+class OfficeAgent(val id: String, val name: String, val task: String, val status: String, val subagents: Int)
 
 class Walker(val id: String, var name: String, var status: String, var desk: Int, var x: Float, var z: Float) {
   val phase = Random.nextFloat() * 10f
@@ -18,6 +18,7 @@ class Walker(val id: String, var name: String, var status: String, var desk: Int
   var pause = Random.nextFloat() * 3f
   var walking = false
   var seated = false
+  var task = ""
   var subagents = 0
   var cabinet = -1
   var spot = -1
@@ -125,11 +126,13 @@ class OfficeSim {
         // On first load everyone is already at their desk; later arrivals come in through the door.
         val start = if (populated) OfficeWorld.door else OfficeWorld.seat(desk)
         val walker = Walker(agent.id, agent.name, agent.status, desk, start.x, start.z)
+        walker.task = agent.task
         walker.subagents = agent.subagents
         walkers[agent.id] = walker
         changed.add(walker)
       } else {
         existing.name = agent.name
+        existing.task = agent.task
         existing.subagents = agent.subagents
         if (existing.status != agent.status) {
           existing.status = agent.status

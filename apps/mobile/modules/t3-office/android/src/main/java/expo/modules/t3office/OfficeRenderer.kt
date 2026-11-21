@@ -15,10 +15,8 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private const val HALF_WIDTH = 11.6f
-private const val TARGET_X = -0.85f
-private const val TARGET_Y = 0.6f
-private const val TARGET_Z = -1.0f
+private const val WALL_TOP = 3f
+private const val FIT_MARGIN = 0.97f
 private const val MINI_SCALE = 0.68f
 
 private fun normalized(x: Float, y: Float, z: Float): FloatArray {
@@ -124,7 +122,43 @@ private class DrawItem {
 
 /** Projects the office onto a canvas; furniture is recorded once, walkers are drawn every frame. */
 class OfficeRenderer(val width: Int, val height: Int) {
-  private val scale = width / (2f * HALF_WIDTH)
+  // The room's corners projected on the screen axes; the scale fits them all into the view.
+  private val minU: Float
+  private val maxU: Float
+  private val minV: Float
+  private val maxV: Float
+  private val scale: Float
+
+  init {
+    var lowU = Float.MAX_VALUE
+    var highU = -Float.MAX_VALUE
+    var lowV = Float.MAX_VALUE
+    var highV = -Float.MAX_VALUE
+    val hw = OfficeWorld.ROOM_WIDTH / 2f
+    val hd = OfficeWorld.ROOM_DEPTH / 2f
+    for (x in floatArrayOf(-hw, hw)) for (y in floatArrayOf(0f, WALL_TOP)) for (z in floatArrayOf(-hd, hd)) {
+      val u = x * RIGHT[0] + y * RIGHT[1] + z * RIGHT[2]
+      val v = x * UP[0] + y * UP[1] + z * UP[2]
+      lowU = min(lowU, u)
+      highU = max(highU, u)
+      lowV = min(lowV, v)
+      highV = max(highV, v)
+    }
+    minU = lowU
+    maxU = highU
+    minV = lowV
+    maxV = highV
+    scale = min(width / (maxU - minU), height / (maxV - minV)) * FIT_MARGIN
+  }
+
+  /** The room's bounds in unzoomed view coordinates. */
+  val roomLeft get() = width / 2f - (maxU - minU) / 2f * scale
+  val roomRight get() = width / 2f + (maxU - minU) / 2f * scale
+  val roomTop get() = height / 2f - (maxV - minV) / 2f * scale
+  val roomBottom get() = height / 2f + (maxV - minV) / 2f * scale
+
+  /** View pixels per world unit at zoom 1. */
+  val pixelsPerUnit get() = scale
   private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
   private val handPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     style = Paint.Style.STROKE
@@ -196,19 +230,11 @@ class OfficeRenderer(val width: Int, val height: Int) {
 
   private fun depth(x: Float, y: Float, z: Float) = x * TO_CAMERA[0] + y * TO_CAMERA[1] + z * TO_CAMERA[2]
 
-  fun projectX(x: Float, y: Float, z: Float): Float {
-    val dx = x - TARGET_X
-    val dy = y - TARGET_Y
-    val dz = z - TARGET_Z
-    return width / 2f + (dx * RIGHT[0] + dy * RIGHT[1] + dz * RIGHT[2]) * scale
-  }
+  fun projectX(x: Float, y: Float, z: Float): Float =
+    width / 2f + (x * RIGHT[0] + y * RIGHT[1] + z * RIGHT[2] - (minU + maxU) / 2f) * scale
 
-  fun projectY(x: Float, y: Float, z: Float): Float {
-    val dx = x - TARGET_X
-    val dy = y - TARGET_Y
-    val dz = z - TARGET_Z
-    return height / 2f - (dx * UP[0] + dy * UP[1] + dz * UP[2]) * scale
-  }
+  fun projectY(x: Float, y: Float, z: Float): Float =
+    height / 2f - (x * UP[0] + y * UP[1] + z * UP[2] - (minV + maxV) / 2f) * scale
 
   /** Applies the current walker transform (scale, limb swing, tilt, bob, heading, position). */
   private fun place(x0: Float, y0: Float, z0: Float, out: FloatArray, o: Int) {
@@ -493,9 +519,9 @@ class OfficeRenderer(val width: Int, val height: Int) {
   }
 
   /** The agent under a point in unzoomed view coordinates. */
-  fun pick(sim: OfficeSim, x: Float, y: Float): String? {
+  fun pick(sim: OfficeSim, x: Float, y: Float, radius: Float): String? {
     var best: String? = null
-    var bestDistance = 0.07f * width
+    var bestDistance = max(radius, 0.45f * scale)
     for (walker in sim.walkers.values) {
       val dx = projectX(walker.px, 0.7f, walker.pz) - x
       val dy = projectY(walker.px, 0.7f, walker.pz) - y

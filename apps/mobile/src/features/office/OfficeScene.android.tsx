@@ -1,17 +1,20 @@
 import { requireNativeView } from "expo";
 import { useGT } from "gt-react-native";
 import { useEffect, useState } from "react";
-import { View, type NativeSyntheticEvent, type ViewProps } from "react-native";
+import { useWindowDimensions, View, type NativeSyntheticEvent, type ViewProps } from "react-native";
 
 import { clearOfficeLog, logOfficeStep, OFFICE_STABLE_MARK } from "./officeLog";
 import type { OfficeAgent } from "./officeSim";
 
-const ASPECT = 0.85;
+// Tall enough to see the room up close, short enough that the thread list still peeks out below.
+const MAX_ASPECT = 1.4;
+const MAX_SCREEN_SHARE = 0.62;
 
 interface NativeOfficeProps extends ViewProps {
   readonly agentsJson: string;
   readonly selectedId: string;
   readonly active: boolean;
+  readonly focusRequest: string;
   readonly onSelectAgent: (event: NativeSyntheticEvent<{ readonly id: string }>) => void;
   readonly onRendered: () => void;
 }
@@ -25,9 +28,12 @@ export function OfficeScene(props: {
   readonly selectedId: string | undefined;
   readonly onSelectAgent: (id: string | undefined) => void;
   readonly onLockScroll: (locked: boolean) => void;
+  readonly focusRequest?: string;
 }) {
   const gt = useGT();
   const [width, setWidth] = useState(0);
+  const screen = useWindowDimensions();
+  const height = Math.round(Math.min(width * MAX_ASPECT, screen.height * MAX_SCREEN_SHARE));
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- records the start of a session for crash diagnosis
   useEffect(() => {
@@ -44,10 +50,11 @@ export function OfficeScene(props: {
         <NativeOffice
           accessibilityRole="image"
           accessibilityLabel={gt("Office with {count} agents", { count: props.agents.length })}
-          style={{ width, height: Math.round(width * ASPECT) }}
+          style={{ width, height }}
           agentsJson={JSON.stringify(props.agents)}
           selectedId={props.selectedId ?? ""}
           active={props.active}
+          focusRequest={props.focusRequest ?? ""}
           onSelectAgent={(event) => props.onSelectAgent(event.nativeEvent.id || undefined)}
           onRendered={() => logOfficeStep(OFFICE_STABLE_MARK)}
         />

@@ -10,6 +10,8 @@ import {
 export interface OfficeAgent {
   readonly id: string;
   readonly name: string;
+  /** A word or two on what the thread is about, under the name on Android. */
+  readonly task?: string;
   readonly status: OfficeStatus;
   /** Running subagents; on Android the thread then moves into a private office. */
   readonly subagents?: number;

@@ -1,8 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useGT } from "gt-react-native";
+import { useGT, useLocale } from "gt-react-native";
 import { lazy, Suspense, use, useState } from "react";
+import { Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppText as Text } from "../../components/ui/AppText";
 import { RenderErrorBoundary } from "../../components/RenderErrorBoundary";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { NativeWorkspaceTabActivityContext } from "../../native/v5-workspace-context";
@@ -13,7 +15,7 @@ import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { OfficeAgentCard } from "./OfficeAgentCard";
 import { OfficeDebugCard } from "./OfficeDebugCard";
 import { officeCrashedLastTime, readOfficeLog } from "./officeLog";
-import { officeShortNames } from "./officeNames";
+import { officeNames, officeTask } from "./officeNames";
 import { OfficeRoom } from "./OfficeRoom";
 import { OfficeSceneFailure } from "./OfficeSceneFailure";
 import { buildOfficeGroups } from "./officeStatus";
@@ -23,8 +25,21 @@ const OfficeScene = lazy(() =>
   import("./OfficeScene").then((module) => ({ default: module.OfficeScene })),
 );
 
+function CameraButton(props: { readonly label: string; readonly onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={props.onPress}
+      className="min-h-11 justify-center rounded-full bg-black/60 px-4"
+    >
+      <Text className="font-t3-bold text-white">{props.label}</Text>
+    </Pressable>
+  );
+}
+
 export function OfficeScreen() {
   const gt = useGT();
+  const locale = useLocale();
   const [startup] = useState(() => {
     const log = readOfficeLog();
     return { log, crashed: officeCrashedLastTime(log) };
@@ -32,6 +47,7 @@ export function OfficeScreen() {
   const [started, setStarted] = useState(!startup.crashed);
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [scrollLocked, setScrollLocked] = useState(false);
+  const [focus, setFocus] = useState({ nonce: 0, target: "" });
   const insets = useSafeAreaInsets();
   const tabActivity = use(NativeWorkspaceTabActivityContext);
   const headerOnly = tabActivity?.headerOnly === true;
@@ -42,10 +58,14 @@ export function OfficeScreen() {
   const rows = groups.flatMap((group) => group.rows);
   // Threads of unreachable environments stay in the list below but get no one in the room.
   const present = rows.filter((row) => row.status !== "disconnected");
-  const names = officeShortNames(present.map((row) => row.thread.title));
+  const names = officeNames(
+    present.map((row) => String(row.thread.id)),
+    locale,
+  );
   const agents = present.map((row, index) => ({
     id: String(row.thread.id),
-    name: names[index] ?? row.thread.title,
+    name: names[index] ?? "",
+    task: officeTask(row.thread.title),
     status: row.status,
     subagents: row.thread.pendingBackgroundTasks.filter((task) => task.kind === "subagent").length,
   }));
@@ -53,6 +73,18 @@ export function OfficeScreen() {
     group.rows.some((row) => String(row.thread.id) === selectedId),
   );
   const selected = selectedGroup?.rows.find((row) => String(row.thread.id) === selectedId);
+  const selectedName = agents.find((agent) => agent.id === selectedId)?.name ?? "";
+  const waiting = agents.filter((agent) => agent.status === "waiting");
+  const moveCamera = (target: string) =>
+    setFocus((current) => ({ nonce: current.nonce + 1, target }));
+  // Each press flies to the next agent waiting for an answer and opens its card.
+  const showNextWaiting = () => {
+    const current = waiting.findIndex((agent) => agent.id === selectedId);
+    const next = waiting[(current + 1) % waiting.length];
+    if (next === undefined) return;
+    setSelectedId(next.id);
+    moveCamera(next.id);
+  };
   const openThread = (target: { environmentId: string; threadId: string }) =>
     selectDetail({ name: "Thread", params: target });
 
@@ -75,31 +107,50 @@ export function OfficeScreen() {
             />
           )}
           {started ? (
-            <RenderErrorBoundary renderFallback={(failure) => <OfficeSceneFailure {...failure} />}>
-              <Suspense fallback={null}>
-                <OfficeScene
-                  agents={agents}
-                  active={tabActivity?.active ?? true}
-                  selectedId={selectedId}
-                  onSelectAgent={setSelectedId}
-                  onLockScroll={setScrollLocked}
-                />
-              </Suspense>
-            </RenderErrorBoundary>
-          ) : null}
-          {selected && selectedGroup ? (
-            <OfficeAgentCard
-              thread={selected.thread}
-              status={selected.status}
-              environment={selectedGroup.label}
-              onOpen={() =>
-                openThread({
-                  environmentId: String(selected.thread.environmentId),
-                  threadId: String(selected.thread.id),
-                })
-              }
-              onClose={() => setSelectedId(undefined)}
-            />
+            <View>
+              <RenderErrorBoundary
+                renderFallback={(failure) => <OfficeSceneFailure {...failure} />}
+              >
+                <Suspense fallback={null}>
+                  <OfficeScene
+                    agents={agents}
+                    active={tabActivity?.active ?? true}
+                    selectedId={selectedId}
+                    onSelectAgent={setSelectedId}
+                    onLockScroll={setScrollLocked}
+                    focusRequest={`${focus.nonce}|${focus.target}`}
+                  />
+                </Suspense>
+              </RenderErrorBoundary>
+              {Platform.OS === "android" ? (
+                <View className="absolute right-3 top-3 flex-row gap-2">
+                  {waiting.length > 0 ? (
+                    <CameraButton
+                      label={gt("Waiting ({count})", { count: waiting.length })}
+                      onPress={showNextWaiting}
+                    />
+                  ) : null}
+                  <CameraButton label={gt("Overview")} onPress={() => moveCamera("overview")} />
+                </View>
+              ) : null}
+              {selected && selectedGroup ? (
+                <View className="absolute inset-x-2 bottom-2">
+                  <OfficeAgentCard
+                    thread={selected.thread}
+                    status={selected.status}
+                    name={selectedName}
+                    environment={selectedGroup.label}
+                    onOpen={() =>
+                      openThread({
+                        environmentId: String(selected.thread.environmentId),
+                        threadId: String(selected.thread.id),
+                      })
+                    }
+                    onClose={() => setSelectedId(undefined)}
+                  />
+                </View>
+              ) : null}
+            </View>
           ) : null}
           {groups.map((group) => (
             <OfficeRoom
