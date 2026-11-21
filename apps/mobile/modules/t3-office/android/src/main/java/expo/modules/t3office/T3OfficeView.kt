@@ -165,8 +165,14 @@ class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context,
     updateRunning()
   }
 
+  // Choreographer keeps ticking while the app is in the background; stop when the window is hidden.
+  override fun onWindowVisibilityChanged(visibility: Int) {
+    super.onWindowVisibilityChanged(visibility)
+    updateRunning()
+  }
+
   private fun updateRunning() {
-    val shouldRun = active && isAttachedToWindow
+    val shouldRun = active && isAttachedToWindow && windowVisibility == VISIBLE
     if (shouldRun == running) return
     running = shouldRun
     lastFrameNanos = 0L

@@ -36,14 +36,13 @@ export function OfficeAgentCard(props: {
     if (text.length === 0 || sending) return;
     setSending(true);
     setFailed(false);
-    try {
-      await props.onSend(text);
-      setDraft("");
-    } catch {
-      setFailed(true);
-    } finally {
-      setSending(false);
-    }
+    const sent = await props.onSend(text).then(
+      () => true,
+      () => false,
+    );
+    setSending(false);
+    if (sent) setDraft("");
+    else setFailed(true);
   };
   const { thread } = props;
   const status =
