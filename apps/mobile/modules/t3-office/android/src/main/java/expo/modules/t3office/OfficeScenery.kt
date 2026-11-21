@@ -11,7 +11,9 @@ class Part(
   val z: Float,
   val color: Int,
   val flat: Boolean = false,
-)
+) {
+  fun shifted(dz: Float) = Part(w, h, d, x, y, z + dz, color, flat)
+}
 
 enum class Kind { PLAIN, DESK, CABINET_DESK, RACK, GONG }
 
@@ -23,7 +25,9 @@ class Furniture(
   val parts: List<Part>,
   val kind: Kind = Kind.PLAIN,
   val index: Int = -1,
-)
+) {
+  fun shifted(dz: Float) = Furniture(ax, ay, az + dz, parts.map { it.shifted(dz) }, kind, index)
+}
 
 private fun c(hex: String) = Color.parseColor(hex)
 
@@ -35,7 +39,7 @@ private fun flat(w: Float, h: Float, d: Float, x: Float, y: Float, z: Float, hex
 
 internal object OfficeScenery {
   private const val HW = OfficeWorld.ROOM_WIDTH / 2f
-  private const val HD = OfficeWorld.ROOM_DEPTH / 2f
+  private const val BACK = OfficeWorld.BACK_WALL
   private val mugs = arrayOf("#ef4444", "#3b82f6", "#f8fafc", "#10b981")
   private val bookColors = arrayOf("#ef4444", "#3b82f6", "#f59e0b", "#10b981", "#a855f7", "#f8fafc", "#0ea5e9", "#e11d48")
 
@@ -56,31 +60,33 @@ internal object OfficeScenery {
   /** Floor, walls and wall decor, drawn first in this order. */
   fun backdrop(): List<Part> {
     val parts = mutableListOf<Part>()
+    val depth = OfficeWorld.roomDepth
+    val lounge = mutableListOf<Part>()
     var x = -HW + 1f
     while (x < HW) {
-      var z = -HD + 1f
-      while (z < HD) {
+      var z = BACK + 1f
+      while (z < BACK + depth) {
         val even = ((x + z + OfficeWorld.ROOM_WIDTH).toInt() % 4) == 0
         parts.add(part(2f, 0.1f, 2f, x, -0.05f, z, if (even) "#d9c4a0" else "#cdb48c"))
         z += 2f
       }
       x += 2f
     }
-    parts.add(part(OfficeWorld.ROOM_WIDTH + 0.4f, 3f, 0.2f, 0f, 1.5f, -HD - 0.1f, "#ece6da"))
-    parts.add(part(0.2f, 3f, OfficeWorld.ROOM_DEPTH, -HW - 0.1f, 1.5f, 0f, "#e1d9c8"))
-    parts.add(part(OfficeWorld.ROOM_WIDTH + 0.4f, 0.16f, 0.05f, 0f, 0.08f, -HD + 0.02f, "#8a6a4a"))
-    parts.add(part(0.05f, 0.16f, OfficeWorld.ROOM_DEPTH, -HW + 0.02f, 0.08f, 0f, "#8a6a4a"))
+    parts.add(part(OfficeWorld.ROOM_WIDTH + 0.4f, 3f, 0.2f, 0f, 1.5f, BACK - 0.1f, "#ece6da"))
+    parts.add(part(0.2f, 3f, depth, -HW - 0.1f, 1.5f, BACK + depth / 2f, "#e1d9c8"))
+    parts.add(part(OfficeWorld.ROOM_WIDTH + 0.4f, 0.16f, 0.05f, 0f, 0.08f, BACK + 0.02f, "#8a6a4a"))
+    parts.add(part(0.05f, 0.16f, depth, -HW + 0.02f, 0.08f, BACK + depth / 2f, "#8a6a4a"))
     // A window behind every office, plus posters in the corners.
     for (wx in OfficeWorld.cabinetX) {
-      parts.add(flat(2.2f, 1.2f, 0.06f, wx, 1.75f, -HD + 0.02f, "#f8fafc"))
-      parts.add(flat(2.0f, 1.0f, 0.07f, wx, 1.75f, -HD + 0.03f, "#8ecdf2"))
-      parts.add(flat(0.06f, 1.0f, 0.08f, wx, 1.75f, -HD + 0.04f, "#f8fafc"))
+      parts.add(flat(2.2f, 1.2f, 0.06f, wx, 1.75f, BACK + 0.02f, "#f8fafc"))
+      parts.add(flat(2.0f, 1.0f, 0.07f, wx, 1.75f, BACK + 0.03f, "#8ecdf2"))
+      parts.add(flat(0.06f, 1.0f, 0.08f, wx, 1.75f, BACK + 0.04f, "#f8fafc"))
     }
-    parts.add(flat(0.9f, 0.6f, 0.05f, -8.9f, 2.45f, -HD + 0.02f, "#1e293b"))
-    parts.add(flat(0.7f, 0.42f, 0.06f, -8.9f, 2.45f, -HD + 0.03f, "#f59e0b"))
-    parts.add(flat(0.9f, 1.2f, 0.05f, 8.8f, 2.1f, -HD + 0.02f, "#0f172a"))
-    parts.add(flat(0.7f, 0.5f, 0.06f, 8.8f, 2.3f, -HD + 0.03f, "#22d3ee"))
-    parts.add(flat(0.7f, 0.3f, 0.06f, 8.8f, 1.8f, -HD + 0.03f, "#a855f7"))
+    parts.add(flat(0.9f, 0.6f, 0.05f, -8.9f, 2.45f, BACK + 0.02f, "#1e293b"))
+    parts.add(flat(0.7f, 0.42f, 0.06f, -8.9f, 2.45f, BACK + 0.03f, "#f59e0b"))
+    parts.add(flat(0.9f, 1.2f, 0.05f, 8.8f, 2.1f, BACK + 0.02f, "#0f172a"))
+    parts.add(flat(0.7f, 0.5f, 0.06f, 8.8f, 2.3f, BACK + 0.03f, "#22d3ee"))
+    parts.add(flat(0.7f, 0.3f, 0.06f, 8.8f, 1.8f, BACK + 0.03f, "#a855f7"))
     // Left wall: door, whiteboard, clock face and a big T3 sign over the couch.
     parts.add(part(0.08f, 2.1f, 1.1f, -HW + 0.03f, 1.05f, OfficeWorld.door.z, "#8a5a2b"))
     parts.add(part(0.06f, 0.08f, 0.08f, -HW + 0.08f, 1f, OfficeWorld.door.z + 0.4f, "#e5c07b"))
@@ -91,17 +97,18 @@ internal object OfficeScenery {
     parts.add(flat(0.07f, 0.05f, 1f, -HW + 0.04f, 1.38f, -0.7f, "#10b981"))
     parts.add(flat(0.05f, 0.8f, 0.8f, -HW + 0.02f, CLOCK_Y, CLOCK_Z, "#1f2937"))
     parts.add(flat(0.06f, 0.7f, 0.7f, -HW + 0.03f, CLOCK_Y, CLOCK_Z, "#f8fafc"))
-    parts.add(flat(0.05f, 1.0f, 1.8f, -HW + 0.02f, 2.0f, 5.4f, "#111827"))
-    parts.add(flat(0.06f, 0.6f, 0.12f, -HW + 0.03f, 2.0f, 4.95f, "#f472b6"))
-    parts.add(flat(0.06f, 0.12f, 0.5f, -HW + 0.03f, 2.24f, 5.25f, "#22d3ee"))
-    parts.add(flat(0.06f, 0.6f, 0.12f, -HW + 0.03f, 2.0f, 5.25f, "#22d3ee"))
-    parts.add(flat(0.06f, 0.12f, 0.36f, -HW + 0.03f, 2.24f, 5.7f, "#22d3ee"))
-    parts.add(flat(0.06f, 0.12f, 0.36f, -HW + 0.03f, 2.0f, 5.7f, "#22d3ee"))
-    parts.add(flat(0.06f, 0.12f, 0.36f, -HW + 0.03f, 1.76f, 5.7f, "#22d3ee"))
-    parts.add(flat(0.06f, 0.6f, 0.1f, -HW + 0.03f, 2.0f, 5.86f, "#22d3ee"))
+    lounge.add(flat(0.05f, 1.0f, 1.8f, -HW + 0.02f, 2.0f, 5.4f, "#111827"))
+    lounge.add(flat(0.06f, 0.6f, 0.12f, -HW + 0.03f, 2.0f, 4.95f, "#f472b6"))
+    lounge.add(flat(0.06f, 0.12f, 0.5f, -HW + 0.03f, 2.24f, 5.25f, "#22d3ee"))
+    lounge.add(flat(0.06f, 0.6f, 0.12f, -HW + 0.03f, 2.0f, 5.25f, "#22d3ee"))
+    lounge.add(flat(0.06f, 0.12f, 0.36f, -HW + 0.03f, 2.24f, 5.7f, "#22d3ee"))
+    lounge.add(flat(0.06f, 0.12f, 0.36f, -HW + 0.03f, 2.0f, 5.7f, "#22d3ee"))
+    lounge.add(flat(0.06f, 0.12f, 0.36f, -HW + 0.03f, 1.76f, 5.7f, "#22d3ee"))
+    lounge.add(flat(0.06f, 0.6f, 0.1f, -HW + 0.03f, 2.0f, 5.86f, "#22d3ee"))
     // Rugs in the lounge.
-    parts.add(flat(2.8f, 0.02f, 1.8f, -6f, 0.01f, 5.1f, "#7c9cbf"))
-    parts.add(flat(3.6f, 0.02f, 2.2f, -1.5f, 0.01f, 5.4f, "#9a7b5c"))
+    lounge.add(flat(2.8f, 0.02f, 1.8f, -6f, 0.01f, 5.1f, "#7c9cbf"))
+    lounge.add(flat(3.6f, 0.02f, 2.2f, -1.5f, 0.01f, 5.4f, "#9a7b5c"))
+    for (item in lounge) parts.add(item.shifted(OfficeWorld.shift))
     return parts
   }
 
@@ -328,13 +335,16 @@ internal object OfficeScenery {
         ),
       ),
     )
+    // Everything placed so far in the lounge moves back as rows of pods are added.
+    for (i in items.indices) if (items[i].az >= OfficeWorld.LOUNGE_START) items[i] = items[i].shifted(OfficeWorld.shift)
     // Low fences around each project pod, open at the front and where the middle lane passes.
     val fence = "#b8c7d4"
     val rail = "#64748b"
     for (pod in 0 until OfficeWorld.PODS) {
-      val cx = OfficeWorld.podX[pod]
+      val cx = OfficeWorld.podX(pod)
       val half = OfficeWorld.POD_HALF_WIDTH
-      val back = OfficeWorld.POD_BACK
+      val back = OfficeWorld.podBack(pod)
+      val front = OfficeWorld.podFront(pod)
       items.add(
         Furniture(
           cx, 0.3f, back,
@@ -344,11 +354,11 @@ internal object OfficeScenery {
           ),
         ),
       )
-      val gapLow = OfficeWorld.lanes[1] - 0.45f
-      val gapHigh = OfficeWorld.lanes[1] + 0.45f
+      val gapLow = OfficeWorld.podMiddleLane(pod) - 0.45f
+      val gapHigh = OfficeWorld.podMiddleLane(pod) + 0.45f
       for (side in floatArrayOf(-1f, 1f)) {
         val sx = cx + side * half
-        for ((from, to) in listOf(back to gapLow, gapHigh to OfficeWorld.POD_FRONT)) {
+        for ((from, to) in listOf(back to gapLow, gapHigh to front)) {
           val mid = (from + to) / 2f
           items.add(
             Furniture(
@@ -382,8 +392,8 @@ internal object OfficeScenery {
     items.add(plant(-9.4f, -4.4f, big = true))
     items.add(plant(8.3f, -1.2f))
     items.add(plant(8.3f, 2.0f))
-    items.add(plant(-9.4f, 6.4f, big = true))
-    items.add(plant(9.4f, 6.4f))
+    items.add(plant(-9.4f, 6.4f + OfficeWorld.shift, big = true))
+    items.add(plant(9.4f, 6.4f + OfficeWorld.shift))
     for (index in 0 until OfficeWorld.DESKS) {
       val place = OfficeWorld.desk(index)
       items.add(desk(place.x, place.z, index, Kind.DESK, wide = false))
@@ -398,16 +408,16 @@ internal object OfficeScenery {
   fun carpet(cabinet: Int) =
     Part(OfficeWorld.CABINET_WIDTH - 0.1f, 0.02f, 3.1f, OfficeWorld.cabinetX[cabinet], 0.012f, -5.4f, carpet, flat = true)
 
-  fun sign(cabinet: Int) = Part(1.6f, 0.3f, 0.03f, OfficeWorld.cabinetX[cabinet], 2.72f, -HD + 0.04f, signOff, flat = true)
+  fun sign(cabinet: Int) = Part(1.6f, 0.3f, 0.03f, OfficeWorld.cabinetX[cabinet], 2.72f, BACK + 0.04f, signOff, flat = true)
 
   /** The floor of a project pod, tinted with the project's colour while one holds it. */
   fun podRug(pod: Int) = Part(
     OfficeWorld.POD_HALF_WIDTH * 2f - 0.1f,
     0.02f,
-    OfficeWorld.POD_FRONT - OfficeWorld.POD_BACK - 0.1f,
-    OfficeWorld.podX[pod],
+    OfficeWorld.podFront(pod) - OfficeWorld.podBack(pod) - 0.1f,
+    OfficeWorld.podX(pod),
     0.011f,
-    (OfficeWorld.POD_FRONT + OfficeWorld.POD_BACK) / 2f,
+    (OfficeWorld.podFront(pod) + OfficeWorld.podBack(pod)) / 2f,
     carpet,
     flat = true,
   )
@@ -418,11 +428,11 @@ internal object OfficeScenery {
 
   /** The glass of each window, drawn per frame in the colour of the sky outside. */
   fun windowPanes(): List<Part> = OfficeWorld.cabinetX.map { wx ->
-    Part(2.0f, 1.0f, 0.07f, wx, 1.75f, -HD + 0.035f, Color.BLACK, flat = true)
+    Part(2.0f, 1.0f, 0.07f, wx, 1.75f, BACK + 0.035f, Color.BLACK, flat = true)
   }
 
   fun windowBars(): List<Part> = OfficeWorld.cabinetX.map { wx ->
-    Part(0.06f, 1.0f, 0.08f, wx, 1.75f, -HD + 0.045f, c("#f8fafc"), flat = true)
+    Part(0.06f, 1.0f, 0.08f, wx, 1.75f, BACK + 0.045f, c("#f8fafc"), flat = true)
   }
 
   /** A warning light on top of a monitor, lit while the agent's last run or CI failed. */

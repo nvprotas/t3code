@@ -148,8 +148,9 @@ class OfficeRenderer(val width: Int, val height: Int) {
     var lowV = Float.MAX_VALUE
     var highV = -Float.MAX_VALUE
     val hw = OfficeWorld.ROOM_WIDTH / 2f
-    val hd = OfficeWorld.ROOM_DEPTH / 2f
-    for (x in floatArrayOf(-hw, hw)) for (y in floatArrayOf(0f, WALL_TOP)) for (z in floatArrayOf(-hd, hd)) {
+    val back = OfficeWorld.BACK_WALL
+    val front = back + OfficeWorld.roomDepth
+    for (x in floatArrayOf(-hw, hw)) for (y in floatArrayOf(0f, WALL_TOP)) for (z in floatArrayOf(back, front)) {
       val u = x * RIGHT[0] + y * RIGHT[1] + z * RIGHT[2]
       val v = x * UP[0] + y * UP[1] + z * UP[2]
       lowU = min(lowU, u)
@@ -475,9 +476,9 @@ class OfficeRenderer(val width: Int, val height: Int) {
   }
 
   /** Where a pod's sign hangs: over the back fence, on the left. */
-  fun podSignX(pod: Int) = projectX(OfficeWorld.podX[pod], 0.75f, OfficeWorld.POD_BACK)
+  fun podSignX(pod: Int) = projectX(OfficeWorld.podX(pod), 0.75f, OfficeWorld.podBack(pod))
 
-  fun podSignY(pod: Int) = projectY(OfficeWorld.podX[pod], 0.75f, OfficeWorld.POD_BACK)
+  fun podSignY(pod: Int) = projectY(OfficeWorld.podX(pod), 0.75f, OfficeWorld.podBack(pod))
 
   fun gongX() = projectX(OfficeWorld.GONG_X, 1.12f, OfficeWorld.GONG_Z)
 

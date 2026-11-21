@@ -46,6 +46,7 @@ class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context,
   private var lastFrameNanos = 0L
   private var framesDrawn = 0
   private var focusRequest = ""
+  private var layoutSeen = 0
 
   // Zoom and pan, applied to the canvas so recorded furniture stays sharp.
   internal var zoom = 1f
@@ -110,6 +111,10 @@ class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context,
       )
     }
     val newlyWaiting = sim.setAgents(agents)
+    if (sim.layoutVersion != layoutSeen) {
+      layoutSeen = sim.layoutVersion
+      if (canvasView.width > 0 && canvasView.height > 0) sizeChanged(canvasView.width, canvasView.height)
+    }
     // A nudge when someone starts waiting for an answer, only while the office is on screen.
     if (newlyWaiting > 0 && running) {
       canvasView.performHapticFeedback(
@@ -298,7 +303,7 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
   // Label layout scratch space, reused every frame.
   private val order = arrayOfNulls<Walker>(MAX_LABELS)
   private val rank = IntArray(MAX_LABELS)
-  private val placed = FloatArray((MAX_LABELS + OfficeWorld.PODS) * 4)
+  private val placed = FloatArray((MAX_LABELS + OfficeWorld.MAX_PODS) * 4)
 
   // One-finger zoom: double tap, then drag up or down without lifting.
   private var dragZoom = false
