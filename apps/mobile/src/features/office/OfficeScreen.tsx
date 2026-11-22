@@ -99,9 +99,9 @@ export function OfficeScreen() {
     task: officeTask(row.thread.title),
     status: row.status,
     ...officeSceneFacts(row.thread, row.status),
-    // Every thread without a project has its own scratch folder; they still share one pod.
+    // Threads without a project share one pod group, whichever server they run on.
     ...(scratchProjects.has(`${row.thread.environmentId}/${row.thread.projectId}`)
-      ? { team: `${row.thread.environmentId}/scratch` }
+      ? { team: "scratch" }
       : {}),
     teamName: projectTitles.get(`${row.thread.environmentId}/${row.thread.projectId}`) ?? "",
   }));
