@@ -56,6 +56,19 @@ internal object OfficeWorld {
     return result
   }
 
+  // Whether a pod shares its right-hand fence's place with the next pod: one project over several pods.
+  private var joins = BooleanArray(MAX_PODS)
+
+  fun joinedRight(pod: Int) = joins.getOrElse(pod) { false }
+
+  fun joinedLeft(pod: Int) = pod % PODS_PER_ROW > 0 && joinedRight(pod - 1)
+
+  fun setJoins(next: BooleanArray): Boolean {
+    if (next.contentEquals(joins)) return false
+    joins = next
+    return true
+  }
+
   /** Resizes the open plan; returns whether the layout changed. */
   fun setRows(count: Int): Boolean {
     val next = count.coerceIn(1, MAX_ROWS)
@@ -217,6 +230,21 @@ internal object OfficeWorld {
       hairColors[(unsigned % hairColors.size).toInt()],
       shirtColors[((unsigned ushr 8) % shirtColors.size).toInt()],
     )
+  }
+
+  /** A badge colour for the model provider running a thread. */
+  fun providerColor(provider: String): Int {
+    val id = provider.lowercase()
+    return when {
+      id.isEmpty() -> Color.TRANSPARENT
+      id.contains("codex") || id.contains("openai") -> Color.parseColor("#10a37f")
+      id.contains("claude") -> Color.parseColor("#d97757")
+      id.contains("cursor") -> Color.parseColor("#3b82f6")
+      id.contains("opencode") -> Color.parseColor("#a855f7")
+      id.contains("grok") -> Color.parseColor("#e5e7eb")
+      id.contains("gemini") || id.contains("antigravity") -> Color.parseColor("#38bdf8")
+      else -> shirtColors[((colors(id)[1].toLong() and 0xffffffffL) % shirtColors.size).toInt()]
+    }
   }
 
   fun hair(index: Int) = hairColors[index % hairColors.size]

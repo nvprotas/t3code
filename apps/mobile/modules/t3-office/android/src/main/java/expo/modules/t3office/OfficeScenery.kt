@@ -357,6 +357,8 @@ internal object OfficeScenery {
       val gapLow = OfficeWorld.podMiddleLane(pod) - 0.45f
       val gapHigh = OfficeWorld.podMiddleLane(pod) + 0.45f
       for (side in floatArrayOf(-1f, 1f)) {
+        if (side > 0f && OfficeWorld.joinedRight(pod)) continue
+        if (side < 0f && OfficeWorld.joinedLeft(pod)) continue
         val sx = cx + side * half
         for ((from, to) in listOf(back to gapLow, gapHigh to front)) {
           val mid = (from + to) / 2f

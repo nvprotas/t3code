@@ -47,6 +47,7 @@ class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context,
   private var framesDrawn = 0
   private var focusRequest = ""
   private var layoutSeen = 0
+  private var rowsSeen = 1
 
   // Zoom and pan, applied to the canvas so recorded furniture stays sharp.
   internal var zoom = 1f
@@ -107,13 +108,25 @@ class T3OfficeView(context: Context, appContext: AppContext) : ExpoView(context,
           item.optInt("merged", 0),
           item.optBoolean("alarm"),
           item.optBoolean("limited"),
+          item.optString("provider"),
         ),
       )
     }
     val newlyWaiting = sim.setAgents(agents)
     if (sim.layoutVersion != layoutSeen) {
       layoutSeen = sim.layoutVersion
-      if (canvasView.width > 0 && canvasView.height > 0) sizeChanged(canvasView.width, canvasView.height)
+      val w = canvasView.width
+      val h = canvasView.height
+      if (w > 0 && h > 0) {
+        if (OfficeWorld.rows == rowsSeen) {
+          // Only fences changed: keep the camera where it is.
+          renderer = OfficeRenderer(w, h)
+          setView(zoom, panX, panY)
+        } else {
+          sizeChanged(w, h)
+        }
+      }
+      rowsSeen = OfficeWorld.rows
     }
     // A nudge when someone starts waiting for an answer, only while the office is on screen.
     if (newlyWaiting > 0 && running) {
@@ -525,6 +538,7 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
     var drawn = 0
     for (pod in 0 until OfficeWorld.PODS) {
       val team = host.sim.podTeam[pod] ?: continue
+      if (OfficeWorld.joinedLeft(pod)) continue
       val name = clip(host.sim.podName[pod] ?: continue, 20)
       val x = renderer.podSignX(pod) * host.zoom + host.panX
       val y = renderer.podSignY(pod) * host.zoom + host.panY
@@ -576,6 +590,13 @@ private class OfficeCanvasView(context: Context, private val host: T3OfficeView)
       else -> Color.argb(170, 0, 0, 0)
     }
     canvas.drawRoundRect(pill, 6f * density, 6f * density, pillPaint)
+    val badge = OfficeWorld.providerColor(walker.provider)
+    if (badge != Color.TRANSPARENT) {
+      badgePaint.color = Color.WHITE
+      canvas.drawCircle(left + 1f * density, top + 1f * density, 5f * density, badgePaint)
+      badgePaint.color = badge
+      canvas.drawCircle(left + 1f * density, top + 1f * density, 3.6f * density, badgePaint)
+    }
     val ink = if (selected) Color.rgb(0x1f, 0x29, 0x37) else Color.WHITE
     namePaint.color = ink
     val nameBaseline = top + 2.5f * density + namePaint.textSize * 0.92f

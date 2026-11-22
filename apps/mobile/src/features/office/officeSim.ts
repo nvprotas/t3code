@@ -23,6 +23,8 @@ export interface OfficeAgent {
   readonly merged?: number;
   readonly alarm?: boolean;
   readonly limited?: boolean;
+  /** Which provider runs the thread, shown as a coloured dot on the name tag. */
+  readonly provider?: string;
 }
 
 export interface Walker {

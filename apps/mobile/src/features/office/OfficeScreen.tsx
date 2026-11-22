@@ -103,6 +103,7 @@ export function OfficeScreen() {
     ...(scratchProjects.has(`${row.thread.environmentId}/${row.thread.projectId}`)
       ? { team: "scratch" }
       : {}),
+    provider: String(row.thread.providerInstanceId),
     teamName: projectTitles.get(`${row.thread.environmentId}/${row.thread.projectId}`) ?? "",
   }));
   const selectedGroup = groups.find((group) =>

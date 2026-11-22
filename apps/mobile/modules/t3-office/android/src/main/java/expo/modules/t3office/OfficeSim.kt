@@ -22,6 +22,7 @@ class OfficeAgent(
   val merged: Int = 0,
   val alarm: Boolean = false,
   val limited: Boolean = false,
+  val provider: String = "",
 )
 
 /** The office's robot vacuum, which wanders the lanes and docks between rounds. */
@@ -50,6 +51,7 @@ class Walker(val id: String, var name: String, var status: String, var desk: Int
   var merged = 0
   var alarm = false
   var limited = false
+  var provider = ""
   // Walking to the gong after a merged pull request, then on to wherever it belongs.
   var celebrate = false
   var hold = 0f
@@ -193,28 +195,28 @@ class OfficeSim {
     val teams = sizes.keys.sortedWith(compareBy<String>({ -(sizes[it] ?: 0) }, { it }))
     val need = HashMap<String, Int>()
     for (team in teams) need[team] = ((sizes[team] ?: 0) + OfficeWorld.DESKS_PER_POD - 1) / OfficeWorld.DESKS_PER_POD
+    // Projects sit side by side in a stable order; a project of more than four agents gets
+    // neighbouring pods, joined into one wider room. Small ones do not straddle two rows.
+    val seq = ArrayList<String?>()
+    for (team in teams.sorted()) {
+      val count = need[team] ?: 0
+      val column = seq.size % OfficeWorld.PODS_PER_ROW
+      if (count <= OfficeWorld.PODS_PER_ROW && column != 0 && column + count > OfficeWorld.PODS_PER_ROW) {
+        repeat(OfficeWorld.PODS_PER_ROW - column) { seq.add(null) }
+      }
+      repeat(count) { seq.add(team) }
+    }
     val unteamed = present.count { it.team.isEmpty() }
-    val podsNeeded = need.values.sum() + (unteamed + OfficeWorld.DESKS_PER_POD - 1) / OfficeWorld.DESKS_PER_POD
+    repeat((unteamed + OfficeWorld.DESKS_PER_POD - 1) / OfficeWorld.DESKS_PER_POD) { seq.add(null) }
     val oldShift = OfficeWorld.shift
-    if (OfficeWorld.setRows((podsNeeded + OfficeWorld.PODS_PER_ROW - 1) / OfficeWorld.PODS_PER_ROW)) relayout(oldShift)
+    if (OfficeWorld.setRows((seq.size + OfficeWorld.PODS_PER_ROW - 1) / OfficeWorld.PODS_PER_ROW)) relayout(oldShift)
     val owner = arrayOfNulls<String>(OfficeWorld.PODS)
-    for (pod in 0 until OfficeWorld.PODS) {
-      val team = podTeam[pod] ?: continue
-      val left = need[team] ?: 0
-      if (left > 0) {
-        owner[pod] = team
-        need[team] = left - 1
-      }
+    for (i in 0 until minOf(seq.size, owner.size)) owner[i] = seq[i]
+    val joins = BooleanArray(OfficeWorld.MAX_PODS) { pod ->
+      pod % OfficeWorld.PODS_PER_ROW < OfficeWorld.PODS_PER_ROW - 1 && pod + 1 < owner.size &&
+        owner[pod] != null && owner[pod] == owner[pod + 1]
     }
-    for (team in teams) {
-      while ((need[team] ?: 0) > 0) {
-        val pod = (0 until OfficeWorld.PODS).filter { owner[it] == null }.maxByOrNull { pod ->
-          OfficeWorld.podDesks(pod).count { desk -> present.any { it.desk == desk && it.team == team } } * 10 - pod
-        } ?: break
-        owner[pod] = team
-        need[team] = (need[team] ?: 1) - 1
-      }
-    }
+    if (OfficeWorld.setJoins(joins)) layoutVersion++
     for (pod in 0 until OfficeWorld.MAX_PODS) {
       podTeam[pod] = owner.getOrNull(pod)
       podName[pod] = owner.getOrNull(pod)?.let { team -> present.firstOrNull { it.team == team }?.teamName }
@@ -360,6 +362,7 @@ class OfficeSim {
     walker.sleeping = asleep(walker)
     walker.alarm = agent.alarm
     walker.limited = agent.limited
+    walker.provider = agent.provider
   }
 
   private fun stepWalker(walker: Walker, dt: Float) {
