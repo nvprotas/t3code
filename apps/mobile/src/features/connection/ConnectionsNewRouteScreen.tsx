@@ -52,13 +52,13 @@ type ConnectionsNewRouteParams = {
 export function ConnectionsNewRouteScreen({
   route,
 }: StaticScreenProps<ConnectionsNewRouteParams | undefined>) {
+  const known = useAtomValue(linkedEnvironmentPrefillAtom);
   if (route.params?.mode === "ssh") {
     return <SshConnectionForm expectedEnvironmentId={route.params.routeFor} />;
   }
   const params = route.params ?? {};
   // Dev-only prefill prevents production links from supplying an attacker-chosen host and token.
   const routePairingUrl = __DEV__ ? (params.pairingUrl?.trim() ?? "") : "";
-  const known = useAtomValue(linkedEnvironmentPrefillAtom);
   const linked = known !== null && known.environmentId === params.linked ? known : null;
   // A new prefill link replaces whatever the form held.
   return (
