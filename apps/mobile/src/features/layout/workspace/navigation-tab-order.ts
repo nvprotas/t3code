@@ -7,9 +7,11 @@ export const NAVIGATION_TAB_ORDER = [
   "issues",
   "usage",
 ] as const;
-export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number];
+/** Built, but left out of the tab bar while workflows are a soft launch on web. */
+type UnlistedTab = "workflows";
+export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number] | UnlistedTab;
 
-const PAGE_TABS = ["office", "usage"] as const;
+const PAGE_TABS = ["office", "usage", "workflows"] as const;
 export type PageTab = (typeof PAGE_TABS)[number];
 
 /** Tabs that are one page rather than a list beside a detail column. */
@@ -44,6 +46,7 @@ export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
   office: msg("Office", { $context: "navigation tab, pixel office of agents at work" }),
   pullRequests: msg("Pulls", { $context: "navigation tab, pull requests" }),
   issues: msg("Issues", { $context: "navigation tab, issues from an issue tracker" }),
+  workflows: msg("Workflows", { $context: "navigation tab, durable workflow runs" }),
   usage: msg("Usage", { $context: "navigation tab, provider usage limits" }),
 };
 

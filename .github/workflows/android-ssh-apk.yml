@@ -7,6 +7,7 @@ on:
     branches:
       - android-ssh
       - android-ssh-v0.1.11
+      - android-ssh-v0.1.12
   workflow_dispatch:
 
 permissions:

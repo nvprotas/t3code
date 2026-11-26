@@ -31,6 +31,7 @@ export const NAVIGATION_TAB_ICONS = {
   office: "person.2",
   pullRequests: PullRequestGlyph.pullRequest,
   issues: "git.issue",
+  workflows: "point.3.connected.trianglepath.dotted",
   usage: "chart.bar.xaxis",
 } as const satisfies Readonly<Record<NavigationTab, AppSymbolName>>;
 

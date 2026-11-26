@@ -56,6 +56,7 @@ export function initialWorkspaceTabsState(
       office: emptyTab(),
       pullRequests: emptyTab(),
       issues: emptyTab(),
+      workflows: emptyTab(),
       usage: emptyTab(),
       settings: emptyTab(),
     },
